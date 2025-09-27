@@ -1,15 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Map, AdvancedMarker, Marker, MapCameraChangedEvent, useMap, type MapMouseEvent } from "@vis.gl/react-google-maps";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MapContainer, TileLayer, Marker, useMapEvent, useMap } from "react-leaflet";
+import L, { Map as LeafletMap } from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+// 修正預設 Marker 圖示在打包環境的路徑問題
+// 使用 import.meta.url 生成絕對路徑
+// @ts-ignore
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: new URL("leaflet/dist/images/marker-icon.png", import.meta.url).toString(),
+  iconRetinaUrl: new URL("leaflet/dist/images/marker-icon-2x.png", import.meta.url).toString(),
+  shadowUrl: new URL("leaflet/dist/images/marker-shadow.png", import.meta.url).toString(),
+});
 
 export type LatLng = { lat: number; lng: number };
+export type MapMarker = { id: string; position: LatLng };
 
 type MapViewProps = {
   initialCenter?: LatLng;
   center?: LatLng; // 若提供，會在變更時自動移動地圖中心
-  markers?: LatLng[];
+  markers?: MapMarker[];
   onMapClick?: (coord: LatLng) => void;
+  onMarkerClick?: (id: string) => void;
 };
 
 /**
@@ -17,10 +31,9 @@ type MapViewProps = {
  * - 點擊地圖可回傳座標
  * - 支援外部傳入 markers 顯示
  */
-export function MapView({ initialCenter = { lat: 23.991, lng: 121.601 }, center: externalCenter, markers = [], onMapClick }: MapViewProps) {
+export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, center: externalCenter, markers = [], onMapClick, onMarkerClick }: MapViewProps) {
   const [mapCenter, setMapCenter] = useState<LatLng>(initialCenter);
-  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID;
-  const map = useMap();
+  const mapRef = useRef<LeafletMap | null>(null);
   const mapOptions = useMemo(
     () => ({
       disableDefaultUI: true,
@@ -30,44 +43,31 @@ export function MapView({ initialCenter = { lat: 23.991, lng: 121.601 }, center:
     []
   );
 
-  const handleClick = useCallback((e: MapMouseEvent) => {
-    const lat = e.detail.latLng?.lat;
-    const lng = e.detail.latLng?.lng;
-    if (typeof lat === "number" && typeof lng === "number" && onMapClick) onMapClick({ lat, lng });
-  }, [onMapClick]);
+  const MapEvents = () => {
+    useMapEvent("click", (e: L.LeafletMouseEvent) => {
+      if (onMapClick) onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
+    });
+    return null;
+  };
 
-  const handleCameraChanged = useCallback((e: MapCameraChangedEvent) => {
-    if (e.detail.center) setMapCenter(e.detail.center as LatLng);
-  }, []);
-
-  // 外部傳入 center 時，主動移動地圖中心
-  useEffect(() => {
-    if (externalCenter && map) {
-      map.setCenter(externalCenter as google.maps.LatLngLiteral);
-    }
-  }, [externalCenter, map]);
+  // 由子元件存取 Leaflet map 並在 center 改變時移動
+  const CenterController = ({ center }: { center?: LatLng }) => {
+    const map = useMap();
+    useEffect(() => {
+      if (center) map.setView([center.lat, center.lng]);
+    }, [center, map]);
+    return null;
+  };
 
   return (
-    <Map
-      defaultCenter={initialCenter}
-      defaultZoom={12}
-      onClick={handleClick}
-      onCameraChanged={handleCameraChanged}
-      mapId={mapId || undefined}
-      style={{ width: "100%", height: "100%" }}
-      gestureHandling={mapOptions.gestureHandling}
-      disableDefaultUI={mapOptions.disableDefaultUI}
-      clickableIcons={mapOptions.clickableIcons}
-    >
-      {markers.map((m, idx) => {
-        // 若沒有 mapId，退回使用一般 Marker，避免 Advanced Marker 警告
-        return mapId ? (
-          <AdvancedMarker key={idx} position={{ lat: m.lat, lng: m.lng }} />
-        ) : (
-          <Marker key={idx} position={{ lat: m.lat, lng: m.lng }} />
-        );
-      })}
-    </Map>
+    <MapContainer center={[mapCenter.lat, mapCenter.lng]} zoom={12} style={{ width: "100%", height: "100%" }} zoomControl={false}>
+      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <CenterController center={externalCenter} />
+      <MapEvents />
+      {markers.map((m) => (
+        <Marker key={m.id} position={[m.position.lat, m.position.lng]} eventHandlers={{ click: () => onMarkerClick && onMarkerClick(m.id) }} />
+      ))}
+    </MapContainer>
   );
 }
 

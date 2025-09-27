@@ -13,7 +13,7 @@ type FABProps = {
  */
 export function FAB({ onClick, asChild, children }: FABProps) {
   const Container = ({ children: c }: { children: React.ReactNode }) => (
-    <div className="fixed right-4 bottom-4 z-40">{c}</div>
+    <div className="fixed right-4 bottom-4 z-[2000]">{c}</div>
   );
   if (asChild) return <Container>{children}</Container>;
   return (

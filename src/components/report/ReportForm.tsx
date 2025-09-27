@@ -25,7 +25,7 @@ export type ReportFormValues = z.infer<typeof formSchema> & {
 type ReportFormProps = {
   latitude: number;
   longitude: number;
-  onSubmitReport: (values: ReportFormValues) => void;
+  onSubmitReport: (values: ReportFormValues) => Promise<void>;
   onCancel?: () => void;
 };
 
@@ -41,20 +41,22 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel }: Re
     handleSubmit,
     setValue,
     register,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<z.infer<typeof formSchema>>({ resolver: zodResolver(formSchema), defaultValues: { reportType: "pending", content: "", emergency: false } });
 
   const [files, setFiles] = useState<File[]>([]);
+  const reportType = watch("reportType");
 
-  const submit = (data: z.infer<typeof formSchema>) => {
-    onSubmitReport({ ...data, files });
+  const submit = async (data: z.infer<typeof formSchema>) => {
+    await onSubmitReport({ ...data, files });
   };
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit(submit)}>
       <div>
         <Label className="mb-1 block">回報類型</Label>
-        <Select onValueChange={(v) => setValue("reportType", v as CaseReportType)}>
+        <Select value={reportType} onValueChange={(v) => setValue("reportType", v as CaseReportType)}>
           <SelectTrigger>
             <SelectValue placeholder="選擇回報類型" />
           </SelectTrigger>

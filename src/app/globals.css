@@ -25,6 +25,9 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Leaflet 預設樣式 */
+@import url("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
+
 /* 行動優化：Dialog 動畫與地圖占滿 */
 @keyframes in-fade {
   from { opacity: 0 }
