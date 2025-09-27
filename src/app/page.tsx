@@ -411,10 +411,11 @@ export default function Home() {
       const newStatus: CaseItem["status"] = values.reportType === "completed" ? "completed" : "pending";
       const newUrgency: CaseItem["urgency"] = isEmergency && needsReinforcement ? "both" : isEmergency ? "emergency" : needsReinforcement ? "reinforcement" : "normal";
       if (selectedCase.id) {
-        const res = await fetch(`/api/cases/${selectedCase.id}/update`, {
+        const res = await fetch("/api/sheets/update", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
+            caseId: selectedCase.id,
             description: values.content,
             status: newStatus,
             emergency: isEmergency,
@@ -424,10 +425,9 @@ export default function Home() {
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data?.error || `update-failed (${res.status})`);
+          throw new Error(typeof data?.error === "string" ? data.error : `update-failed (${res.status})`);
         }
-        const { item } = (await res.json()) as { item: CaseItem };
-        caseStore.actions.upsert(item);
+        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
       }
       await queryClient.invalidateQueries({ queryKey: ["cases"] });
       const updated: CaseItem = {
