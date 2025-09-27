@@ -39,7 +39,7 @@ async function updateCaseInDatabase(payload: UpdatePayload) {
   }
 
   const updates: string[] = [];
-  const params: any[] = [];
+  const params: Array<string | number | null | Date> = [];
 
   if (Array.isArray(claimedBy)) {
     updates.push("claimed_by = ?");
@@ -118,4 +118,3 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
 }
-

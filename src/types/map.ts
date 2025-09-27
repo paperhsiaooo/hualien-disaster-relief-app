@@ -9,4 +9,5 @@ export type MapMarker = {
   urgency?: CaseUrgency | string;
   isEmergency?: boolean;
   needsReinforcement?: boolean;
+  category?: string;
 };

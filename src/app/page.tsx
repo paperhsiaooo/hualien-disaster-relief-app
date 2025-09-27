@@ -21,6 +21,7 @@ import { UploadArea } from "@/components/report/UploadArea";
 import { useCasesQuery, useCreateCaseMutation } from "@/hooks/useCases";
 import { useSheetsCases } from "@/hooks/useSheets";
 import { uploadFilesAndGetUrls } from "@/lib/uploads";
+import { CATEGORY_OPTIONS, type CategoryValue, formatCategoryLabel } from "@/constants/categories";
 
 const CDN_BASE_URL = "https://hualien-disaster-relief-app.cdn.liwei-cup.com";
 const CDN_URL = new URL(CDN_BASE_URL);
@@ -42,23 +43,13 @@ type ActiveDialog = "name" | "start" | "confirm" | "report" | "info" | "update" 
 
 const DEFAULT_CENTER: LatLng = { lat: 23.6539, lng: 121.4231 };
 
-// Keep a local copy of category options for type-narrowing when populating update form
-const CATEGORY_OPTIONS_PAGE = [
-  "其他災情",
-  "環境污染",
-  "基礎設施",
-  "淹水災情",
-  "路樹災情",
-  "橋樑災情",
-  "土石災情",
-  "廣告招牌災情",
-  "道路災情",
-] as const;
-type CategoryOption = (typeof CATEGORY_OPTIONS_PAGE)[number];
-const resolveCategoryOption = (value?: string): CategoryOption =>
-  (CATEGORY_OPTIONS_PAGE.includes((value as CategoryOption) ?? "" as CategoryOption)
-    ? (value as CategoryOption)
-    : "其他災情");
+const resolveCategoryOption = (value?: string): CategoryValue => {
+  if (value && (CATEGORY_OPTIONS as readonly string[]).includes(value)) {
+    return value as CategoryValue;
+  }
+  if (value === "廣告牌災情") return "廣告招牌災情";
+  return "其他災情";
+};
 
 function HomeContent() {
   // 篩選狀態
@@ -76,6 +67,7 @@ function HomeContent() {
   const [pendingCoord, setPendingCoord] = useState<LatLng | null>(null);
   const [centerCommand, setCenterCommand] = useState<LatLng | null>(null);
   const [zoomCommand, setZoomCommand] = useState<number | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [pendingUseCurrent, setPendingUseCurrent] = useState(false);
   const [mapSelectionActive, setMapSelectionActive] = useState(false);
   const [selectedCase, setSelectedCase] = useState<CaseItem | null>(null);
@@ -243,6 +235,7 @@ function HomeContent() {
       urgency: c.urgency,
       isEmergency: caseHasEmergency(c),
       needsReinforcement: caseNeedsReinforcement(c),
+      category: c.category,
     });
     const visibleCases = (cases ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
     const visibleSheets = (sheets?.items ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
@@ -649,7 +642,28 @@ function HomeContent() {
         {/* 簡易：未實作標籤點擊後聚焦；後續可加入 Marker cluster 與點擊詳情 */}
       </div>
 
-      {/* 右下角 + 按鈕 */}
+      {/* 右下角說明與新增按鈕 */}
+      <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+        <FAB offsetY={68}>
+          <DialogTrigger asChild>
+            <Button size="icon" className="h-10 min-w-[40px] rounded-full bg-neutral-700 text-base text-white shadow-lg hover:bg-neutral-800" aria-label="使用說明">
+              ?
+            </Button>
+          </DialogTrigger>
+        </FAB>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>使用說明</DialogTitle>
+            <DialogDescription>快速了解如何通報與瀏覽案件。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm leading-relaxed text-neutral-700 dark:text-neutral-200">
+            <p>在地圖上點擊案件標記可查看詳情，也可以使用篩選列調整顯示。</p>
+            <p>要新增案件時，按下方的「＋」，選擇在地圖取點或使用目前位置。</p>
+            <p>案件詳情內可複製分享連結，使用 `?case=案件ID` 直接導向該案件位置。</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={startOpen}
         onOpenChange={(open) => {
@@ -664,9 +678,17 @@ function HomeContent() {
           }
         }}
       >
-        <DialogTrigger asChild>
-          <FAB />
-        </DialogTrigger>
+        <FAB>
+          <DialogTrigger asChild>
+            <Button
+              size="icon"
+              className="h-12 w-12 rounded-full bg-blue-400 text-3xl text-white shadow-lg hover:bg-blue-500"
+              aria-label="新增"
+            >
+              +
+            </Button>
+          </DialogTrigger>
+        </FAB>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新增案件・選擇定位方式</DialogTitle>
@@ -784,7 +806,13 @@ function HomeContent() {
             <div className="flex-1 space-y-4 overflow-y-auto pr-1">
               <div>
                 <div className="text-xs text-neutral-500">回報狀態</div>
-                <div className="mt-1 text-base font-semibold">
+                <div
+                  className={
+                    selectedCase.status === "completed"
+                      ? "mt-1 inline-flex rounded bg-emerald-500 px-2 py-1 text-sm font-semibold text-white"
+                      : "mt-1 text-base font-semibold"
+                  }
+                >
                   {selectedCase.status === "completed" ? "已處理" : "待處理"}
                 </div>
               </div>
@@ -816,7 +844,7 @@ function HomeContent() {
               <div>
                 <div className="text-xs text-neutral-500">災情類別</div>
                 <div className="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
-                  {selectedCase.category || "其他災情"}
+                  {formatCategoryLabel(resolveCategoryOption(selectedCase.category))}
                 </div>
               </div>
               {selectedCase.status !== "completed" && (selectedHasEmergency || selectedNeedsReinforcement) && (
@@ -890,7 +918,7 @@ function HomeContent() {
               <div className="grid w-full grid-cols-3 gap-2">
                 {selectedCase.status !== "completed" && (
                   <Button className="w-full" variant="outline" onClick={handleClaim} disabled={claimLoading}>
-                    {claimLoading ? "認領中…" : "我要認領"}
+                    {claimLoading ? "認領中…" : "認領"}
                   </Button>
                 )}
                 {selectedCase.status !== "completed" && (

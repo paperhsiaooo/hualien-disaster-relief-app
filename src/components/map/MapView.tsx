@@ -8,6 +8,7 @@ import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import type { MapMarker, LatLng } from "@/types/map";
+import { CATEGORY_EMOJI, CATEGORY_COLORS, type CategoryValue, CATEGORY_OPTIONS } from "@/constants/categories";
 
 // 修正預設 Marker 圖示在打包環境的路徑問題
 // 使用 import.meta.url 生成絕對路徑
@@ -18,21 +19,6 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: new URL("leaflet/dist/images/marker-icon-2x.png", import.meta.url).toString(),
   shadowUrl: new URL("leaflet/dist/images/marker-shadow.png", import.meta.url).toString(),
 });
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: "#facc15",
-  claimed: "#3b82f6",
-  completed: "#22c55e",
-  default: "#9ca3af",
-};
-
-const PENDING_TRIANGLE_SVG = `
-  <svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
-    <path d="M14 2 L26 26 H2 Z" fill="#facc15" stroke="#ffffff" stroke-width="2" />
-    <path d="M14 9.5 L14 18" stroke="#1f2937" stroke-width="3" stroke-linecap="round" />
-    <circle cx="14" cy="21.5" r="1.6" fill="#1f2937" />
-  </svg>
-`;
 
 type MapMarkerShape = MapMarker extends infer T ? T : never;
 type LatLngShape = LatLng extends infer T ? T : never;
@@ -81,16 +67,25 @@ export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, cente
 
   const getIconFor = useCallback((marker: MapMarker) => {
     const statusKey = marker.status ? String(marker.status) : "";
-    const color = STATUS_COLORS[statusKey] ?? STATUS_COLORS.default;
 
     const fallbackEmergency = marker.urgency === "emergency" || marker.urgency === "both";
     const fallbackReinforcement = marker.urgency === "reinforcement" || marker.urgency === "both";
     const isEmergency = marker.isEmergency ?? fallbackEmergency;
     const needsReinforcement = marker.needsReinforcement ?? fallbackReinforcement;
 
-    const cacheKey = `${statusKey}-${color}-${isEmergency ? "E" : ""}${needsReinforcement ? "R" : ""}`;
+    const categoryValue: CategoryValue = (() => {
+      const value = marker.category;
+      if (value && (CATEGORY_OPTIONS as readonly string[]).includes(value)) return value as CategoryValue;
+      if (value === "廣告牌災情") return "廣告招牌災情";
+      return "其他災情";
+    })();
+
+    const cacheKey = `${statusKey}-${categoryValue}-${isEmergency ? "E" : ""}${needsReinforcement ? "R" : ""}`;
     const cached = iconCache.current.get(cacheKey);
     if (cached) return cached;
+
+    const categoryEmoji = CATEGORY_EMOJI[categoryValue] ?? CATEGORY_EMOJI["其他災情"];
+    const categoryColor = CATEGORY_COLORS[categoryValue] ?? "#6b7280";
 
     const overlays: string[] = [];
     if (isEmergency) {
@@ -102,22 +97,17 @@ export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, cente
 
     const overlayHtml = overlays.join("");
 
-    const baseHtml = (() => {
-      if (statusKey === "pending") {
-        const triClass = isEmergency ? "marker-triangle marker-triangle--emergency" : "marker-triangle";
-        return `<span class="${triClass}">${PENDING_TRIANGLE_SVG}</span>`;
-      }
-      if (statusKey === "completed") {
-        const circleClass = isEmergency ? "marker-circle marker-circle--emergency" : "marker-circle";
-        return `<span class="${circleClass}" style="background:${color};"><span class="marker-symbol">✓</span></span>`;
-      }
-      const circleClass = isEmergency ? "marker-circle marker-circle--emergency" : "marker-circle";
-      return `<span class="${circleClass}" style="background:${color};"></span>`;
-    })();
+    let backgroundColor = categoryColor;
+    if (statusKey === "pending") backgroundColor = "#ffffff";
+    if (statusKey === "claimed") backgroundColor = "#3b82f6";
+    if (statusKey === "completed") backgroundColor = "#22c55e";
+
+    const circleClass = isEmergency ? "marker-circle marker-circle--emergency" : "marker-circle";
+    const baseHtml = `<span class="${circleClass}" style="background:${backgroundColor};">${categoryEmoji}</span>`;
 
     const html = `<span class="marker-wrapper">${baseHtml}${overlayHtml}</span>`;
 
-    const icon = L.divIcon({ className: "custom-marker leaflet-div-icon", html, iconSize: [28, 28], iconAnchor: [14, 14] });
+    const icon = L.divIcon({ className: "custom-marker leaflet-div-icon", html, iconSize: [36, 36], iconAnchor: [18, 18] });
     iconCache.current.set(cacheKey, icon);
     return icon;
   }, []);
@@ -126,9 +116,9 @@ export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, cente
     () =>
       L.divIcon({
         className: "selection-pin-icon",
-        html: '<span class="selection-pin"></span>',
-        iconSize: [24, 32],
-        iconAnchor: [12, 30],
+        html: '<span class="selection-pin">📍</span>',
+        iconSize: [32, 32],
+        iconAnchor: [16, 28],
       }),
     []
   );

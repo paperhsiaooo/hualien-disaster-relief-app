@@ -12,18 +12,8 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { UploadArea } from "@/components/report/UploadArea";
 import type { CaseReportType } from "@/types/case";
+import { CATEGORY_OPTIONS, CATEGORY_EMOJI } from "@/constants/categories";
 
-const CATEGORY_OPTIONS = [
-  "其他災情",
-  "環境污染",
-  "基礎設施",
-  "淹水災情",
-  "路樹災情",
-  "橋樑災情",
-  "土石災情",
-  "廣告招牌災情",
-  "道路災情",
-] as const;
 
 const formSchema = z.object({
   reportType: z.enum(["pending", "completed"]),
@@ -173,7 +163,7 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel, init
           <SelectContent>
             {CATEGORY_OPTIONS.map((option) => (
               <SelectItem key={option} value={option}>
-                {option}
+                {CATEGORY_EMOJI[option]} {option}
               </SelectItem>
             ))}
           </SelectContent>
