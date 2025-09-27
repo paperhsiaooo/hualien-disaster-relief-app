@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,14 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { UploadArea } from "@/components/report/UploadArea";
 import type { CaseReportType } from "@/types/case";
 
 const formSchema = z.object({
-  reportType: z.enum(["pending", "completed"]).default("pending"),
+  reportType: z.enum(["pending", "completed"]),
   content: z.string().min(1, "請輸入內容"),
-  emergency: z.boolean().default(false),
+  emergency: z.boolean(),
+  reinforcement: z.boolean(),
 });
 
 export type ReportFormValues = z.infer<typeof formSchema> & {
@@ -27,6 +29,10 @@ type ReportFormProps = {
   longitude: number;
   onSubmitReport: (values: ReportFormValues) => Promise<void>;
   onCancel?: () => void;
+  initialValues?: Partial<Omit<ReportFormValues, "files">>;
+  submitLabel?: string;
+  loading?: boolean;
+  existingImages?: string[];
 };
 
 /**
@@ -36,17 +42,41 @@ type ReportFormProps = {
  * - 緊急勾選
  * - 上傳最多 3 張
  */
-export function ReportForm({ latitude, longitude, onSubmitReport, onCancel }: ReportFormProps) {
+export function ReportForm({ latitude, longitude, onSubmitReport, onCancel, initialValues, submitLabel, loading, existingImages }: ReportFormProps) {
+  type FormValues = z.infer<typeof formSchema>;
   const {
     handleSubmit,
     setValue,
     register,
     watch,
+    reset,
     formState: { errors, isSubmitting },
-  } = useForm<z.infer<typeof formSchema>>({ resolver: zodResolver(formSchema), defaultValues: { reportType: "pending", content: "", emergency: false } });
+  } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { reportType: "pending", content: "", emergency: false, reinforcement: false },
+  });
 
   const [files, setFiles] = useState<File[]>([]);
   const reportType = watch("reportType");
+  const emergencyValue = watch("emergency");
+  const reinforcementValue = watch("reinforcement");
+
+  useEffect(() => {
+    register("emergency");
+    register("reinforcement");
+  }, [register]);
+
+  useEffect(() => {
+    if (initialValues) {
+      reset({
+        reportType: initialValues.reportType ?? "pending",
+        content: initialValues.content ?? "",
+        emergency: initialValues.emergency ?? false,
+        reinforcement: initialValues.reinforcement ?? false,
+      });
+      setFiles([]);
+    }
+  }, [initialValues, reset]);
 
   const submit = async (data: z.infer<typeof formSchema>) => {
     await onSubmitReport({ ...data, files });
@@ -74,9 +104,15 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel }: Re
         {errors.content && <p className="mt-1 text-sm text-red-600">{errors.content.message}</p>}
       </div>
 
-      <div className="flex items-center gap-2">
-        <Checkbox onCheckedChange={(v) => setValue("emergency", Boolean(v))} id="emergency" />
-        <Label htmlFor="emergency">緊急</Label>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Checkbox checked={!!emergencyValue} onCheckedChange={(v) => setValue("emergency", v === true, { shouldDirty: true })} id="emergency" />
+          <Label htmlFor="emergency">緊急</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox checked={!!reinforcementValue} onCheckedChange={(v) => setValue("reinforcement", v === true, { shouldDirty: true })} id="reinforcement" />
+          <Label htmlFor="reinforcement">需要增援</Label>
+        </div>
       </div>
 
       <div>
@@ -84,14 +120,27 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel }: Re
         <UploadArea value={files} onChange={setFiles} />
       </div>
 
+      {existingImages && existingImages.length > 0 && (
+        <div>
+          <Label className="mb-1 block">既有照片</Label>
+          <div className="grid grid-cols-3 gap-2">
+            {existingImages.map((url, idx) => (
+              <div key={`${url}-${idx}`} className="relative aspect-[4/3] overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
+                <Image src={url} alt="已上傳照片" fill className="object-cover" sizes="(max-width: 640px) 33vw, 120px" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end gap-2">
         {onCancel && (
           <Button type="button" variant="ghost" onClick={onCancel}>
             取消
           </Button>
         )}
-        <Button type="submit" disabled={isSubmitting}>
-          送出
+        <Button type="submit" disabled={isSubmitting || loading}>
+          {loading ? "處理中…" : submitLabel || "送出"}
         </Button>
       </div>
 
@@ -99,5 +148,3 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel }: Re
     </form>
   );
 }
-
-

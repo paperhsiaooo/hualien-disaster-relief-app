@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import Image from "next/image";
 
 const ACCEPT = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
@@ -100,7 +101,9 @@ export function UploadArea({ value, onChange }: UploadAreaProps) {
             const url = URL.createObjectURL(f);
             return (
               <div key={idx} className="relative group">
-                <img src={url} alt={f.name} className="h-24 w-full object-cover rounded" />
+                <div className="relative h-24 w-full overflow-hidden rounded">
+                  <Image src={url} alt={f.name} fill className="object-cover" sizes="96px" />
+                </div>
                 <button
                   type="button"
                   onClick={() => removeAt(idx)}

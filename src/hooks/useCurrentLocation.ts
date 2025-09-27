@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { LatLng } from "@/types/map";
 
 /**
@@ -9,13 +9,23 @@ import type { LatLng } from "@/types/map";
 export function useCurrentLocation() {
   const [coord, setCoord] = useState<LatLng | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const geoRef = useRef<Geolocation | null>(null);
 
-  const get = useCallback(() => {
-    if (!navigator.geolocation) {
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.navigator?.geolocation) {
       setError("此裝置不支援定位");
       return;
     }
-    navigator.geolocation.getCurrentPosition(
+    geoRef.current = window.navigator.geolocation;
+  }, []);
+
+  const get = useCallback(() => {
+    const nav = geoRef.current;
+    if (!nav) {
+      setError("此裝置不支援定位");
+      return;
+    }
+    nav.getCurrentPosition(
       (pos) => {
         setCoord({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setError(null);

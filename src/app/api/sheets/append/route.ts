@@ -13,13 +13,19 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
+      id: caseId,
       description,
       latitude,
       longitude,
       status,
-      urgency,
       images,
       createdAt,
+      reporterName,
+      reinforcement,
+      claimedBy,
+      completion,
+      isEmergency,
+      needsReinforcement,
     } = body ?? {};
 
     const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
@@ -38,6 +44,15 @@ export async function POST(req: NextRequest) {
     });
 
     const sheets = google.sheets({ version: "v4", auth });
+    const emergencyFlag = isEmergency ? "true" : "";
+    const reinforcementBool = typeof needsReinforcement === "boolean" ? needsReinforcement : Boolean(reinforcement);
+    const reinforcementFlag = reinforcementBool ? "true" : "";
+    const claimedByCSV = Array.isArray(claimedBy) ? claimedBy.join("; ") : "";
+    const completionImagesCSV = Array.isArray(completion?.images) ? completion?.images.join(", ") : "";
+    const completionDescription = completion?.description || "";
+    const completedBy = completion?.completedBy || "";
+    const completedAtISO = completion?.completedAt ? new Date(completion.completedAt).toISOString() : "";
+
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: sheetName,
@@ -46,21 +61,28 @@ export async function POST(req: NextRequest) {
         values: [
           [
             new Date(createdAt || Date.now()).toISOString(),
+            reporterName || "",
             description || "",
             latitude,
             longitude,
             status || "",
-            urgency || "",
+            emergencyFlag,
+            reinforcementFlag,
             Array.isArray(images) ? images.join(", ") : "",
+            claimedByCSV,
+            completionDescription,
+            completionImagesCSV,
+            completedBy,
+            completedAtISO,
+            caseId || "",
           ],
         ],
       },
     });
 
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err?.message || "Unknown" }), { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown";
+    return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
 }
-
-

@@ -1,24 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvent, useMap } from "react-leaflet";
-import L, { Map as LeafletMap } from "leaflet";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import type { MapMarker, LatLng } from "@/types/map";
 
 // 修正預設 Marker 圖示在打包環境的路徑問題
 // 使用 import.meta.url 生成絕對路徑
-// @ts-ignore
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+
+delete (L.Icon.Default.prototype as { _getIconUrl?: () => string | undefined })._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: new URL("leaflet/dist/images/marker-icon.png", import.meta.url).toString(),
   iconRetinaUrl: new URL("leaflet/dist/images/marker-icon-2x.png", import.meta.url).toString(),
   shadowUrl: new URL("leaflet/dist/images/marker-shadow.png", import.meta.url).toString(),
 });
 
-export type LatLng = { lat: number; lng: number };
-export type MapMarker = { id: string; position: LatLng };
+const STATUS_COLORS: Record<string, string> = {
+  pending: "#facc15",
+  claimed: "#3b82f6",
+  completed: "#22c55e",
+  default: "#9ca3af",
+};
 
-type MapViewProps = {
+export type MapViewProps = {
   initialCenter?: LatLng;
   center?: LatLng; // 若提供，會在變更時自動移動地圖中心
   markers?: MapMarker[];
@@ -32,16 +37,41 @@ type MapViewProps = {
  * - 支援外部傳入 markers 顯示
  */
 export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, center: externalCenter, markers = [], onMapClick, onMarkerClick }: MapViewProps) {
-  const [mapCenter, setMapCenter] = useState<LatLng>(initialCenter);
-  const mapRef = useRef<LeafletMap | null>(null);
-  const mapOptions = useMemo(
-    () => ({
-      disableDefaultUI: true,
-      clickableIcons: false,
-      gestureHandling: "greedy" as const,
-    }),
-    []
-  );
+  const iconCache = useRef(new Map<string, L.DivIcon>());
+
+  const getIconFor = useCallback((marker: MapMarker) => {
+    const statusKey = marker.status ? String(marker.status) : "";
+    const color = STATUS_COLORS[statusKey] ?? STATUS_COLORS.default;
+
+    const fallbackEmergency = marker.urgency === "emergency" || marker.urgency === "both";
+    const fallbackReinforcement = marker.urgency === "reinforcement" || marker.urgency === "both";
+    const isEmergency = marker.isEmergency ?? fallbackEmergency;
+    const needsReinforcement = marker.needsReinforcement ?? fallbackReinforcement;
+
+    const cacheKey = `${color}-${isEmergency ? "E" : ""}${needsReinforcement ? "R" : ""}`;
+    const cached = iconCache.current.get(cacheKey);
+    if (cached) return cached;
+
+    const overlays: string[] = [];
+    if (isEmergency) {
+      overlays.push(
+        `<span style="position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:9999px;background:#ef4444;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1;">!</span>`
+      );
+    }
+    if (needsReinforcement) {
+      overlays.push(
+        `<span style="position:absolute;bottom:-6px;left:-6px;width:16px;height:16px;border-radius:9999px;background:#f97316;color:#111827;display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1;">✋</span>`
+      );
+    }
+
+    const overlayHtml = overlays.join("");
+
+    const html = `<span style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:9999px;background:${color};border:2px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.3);">${overlayHtml}</span>`;
+
+    const icon = L.divIcon({ className: "custom-marker leaflet-div-icon", html, iconSize: [26, 26], iconAnchor: [13, 13] });
+    iconCache.current.set(cacheKey, icon);
+    return icon;
+  }, []);
 
   const MapEvents = () => {
     useMapEvent("click", (e: L.LeafletMouseEvent) => {
@@ -60,42 +90,18 @@ export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, cente
   };
 
   return (
-    <MapContainer center={[mapCenter.lat, mapCenter.lng]} zoom={12} style={{ width: "100%", height: "100%" }} zoomControl={false}>
+    <MapContainer center={[initialCenter.lat, initialCenter.lng]} zoom={14} style={{ width: "100%", height: "100%" }} zoomControl={false}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       <CenterController center={externalCenter} />
       <MapEvents />
       {markers.map((m) => (
-        <Marker key={m.id} position={[m.position.lat, m.position.lng]} eventHandlers={{ click: () => onMarkerClick && onMarkerClick(m.id) }} />
+        <Marker
+          key={m.id}
+          position={[m.position.lat, m.position.lng]}
+          icon={getIconFor(m)}
+          eventHandlers={{ click: () => onMarkerClick && onMarkerClick(m.id) }}
+        />
       ))}
     </MapContainer>
   );
 }
-
-/**
- * 取用使用者目前位置。回傳座標或錯誤。
- */
-export function useCurrentLocation() {
-  const [coord, setCoord] = useState<LatLng | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const get = useCallback(() => {
-    if (!navigator.geolocation) {
-      setError("此裝置不支援定位");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoord({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setError(null);
-      },
-      (err) => {
-        setError(err.message || "無法取得定位");
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-    );
-  }, []);
-
-  return { coord, error, get } as const;
-}
-
-

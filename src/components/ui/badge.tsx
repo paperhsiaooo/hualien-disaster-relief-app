@@ -18,9 +18,8 @@ export function Badge({ className, variant = "default", ...props }: BadgeProps) 
     outline: "border border-neutral-300 text-neutral-900 dark:border-neutral-700 dark:text-neutral-100",
   };
 
-  const base = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium";
+  const base = "inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-medium";
   const classes = [base, variants[variant], className].filter(Boolean).join(" ");
   return <span className={classes} {...props} />;
 }
-
 

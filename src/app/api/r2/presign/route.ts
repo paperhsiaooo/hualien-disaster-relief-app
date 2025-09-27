@@ -40,8 +40,9 @@ export async function POST(req: NextRequest) {
 
     const publicUrl = `${publicBase.replace(/\/$/, "")}/${encodeURIComponent(key)}`;
     return new Response(JSON.stringify({ uploadUrl, publicUrl }), { status: 200 });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err?.message || "Unknown" }), { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown";
+    return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
 }
 

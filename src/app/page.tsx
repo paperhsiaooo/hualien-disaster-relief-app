@@ -1,54 +1,184 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MapView, useCurrentLocation, type LatLng, type MapMarker } from "@/components/map/MapView";
-import type { CaseItem } from "@/types/case";
+import Image from "next/image";
+import dynamic from "next/dynamic";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCurrentLocation } from "@/hooks/useCurrentLocation";
+import type { LatLng, MapMarker } from "@/types/map";
+import type { MapViewProps } from "@/components/map/MapView";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import type { CaseItem, CaseStatus } from "@/types/case";
 import { FAB } from "@/components/map/FAB";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FiltersBar } from "@/components/filters/FiltersBar";
 import { ReportForm, type ReportFormValues } from "@/components/report/ReportForm";
+import { UploadArea } from "@/components/report/UploadArea";
 import { useCasesQuery, useCreateCaseMutation } from "@/hooks/useCases";
 import { useSheetsCases } from "@/hooks/useSheets";
+import { uploadFilesAndGetUrls } from "@/lib/uploads";
 
-type ActiveDialog = "start" | "confirm" | "report" | "info";
+const MapView = dynamic<MapViewProps>(() => import("@/components/map/MapView").then((mod) => mod.MapView), { ssr: false });
+
+const formatDate = (value?: number) => {
+  if (!value) return "";
+  const date = new Date(value);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}年${m}月${d}日`;
+};
+
+type ReportCoreValues = Pick<ReportFormValues, "reportType" | "content" | "emergency" | "reinforcement">;
+
+type ActiveDialog = "name" | "start" | "confirm" | "report" | "info" | "update" | "complete";
 
 const DEFAULT_CENTER: LatLng = { lat: 23.6539, lng: 121.4231 };
 
 export default function Home() {
   // 篩選狀態
-  const [filters, setFilters] = useState({ status: "all", urgency: "completed" });
+  const [filters, setFilters] = useState({ status: { pending: false, claimed: false, completed: false }, urgency: { emergency: false, reinforcement: false } });
 
   // 地圖互動狀態
   const [activeDialog, setActiveDialog] = useState<ActiveDialog | null>(null);
+  const nameOpen = activeDialog === "name";
   const startOpen = activeDialog === "start";
   const confirmOpen = activeDialog === "confirm";
   const reportOpen = activeDialog === "report";
   const infoOpen = activeDialog === "info";
+  const updateOpen = activeDialog === "update";
+  const completeOpen = activeDialog === "complete";
   const [pendingCoord, setPendingCoord] = useState<LatLng | null>(null);
   const [centerCommand, setCenterCommand] = useState<LatLng | null>(null);
   const [pendingUseCurrent, setPendingUseCurrent] = useState(false);
   const [mapSelectionActive, setMapSelectionActive] = useState(false);
   const [selectedCase, setSelectedCase] = useState<CaseItem | null>(null);
   const [toast, setToast] = useState<string>("");
+  const [userName, setUserName] = useState<string>("匿名");
+  const [nameInput, setNameInput] = useState<string>("匿名");
+  const [isNameConfirmed, setIsNameConfirmed] = useState(false);
+  const [completionDescription, setCompletionDescription] = useState<string>("");
+  const [completionFiles, setCompletionFiles] = useState<File[]>([]);
+  const [completionLoading, setCompletionLoading] = useState(false);
+  const [updateInitialValues, setUpdateInitialValues] = useState<ReportCoreValues | null>(null);
+  const [updateLoading, setUpdateLoading] = useState(false);
+
+  const queryClient = useQueryClient();
 
   const showDialog = useCallback((dialog: ActiveDialog | null) => {
     setActiveDialog(dialog);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("hualien-user-name");
+    if (!stored) {
+      setUserName("匿名");
+      setNameInput("匿名");
+      showDialog("name");
+      setIsNameConfirmed(false);
+      return;
+    }
+    setUserName(stored);
+    setNameInput(stored);
+    setIsNameConfirmed(true);
+  }, [showDialog]);
+
+  useEffect(() => {
+    if (nameOpen) {
+      setNameInput(userName || "匿名");
+    }
+  }, [nameOpen, userName]);
+
+  const resolveImageSrc = useCallback((url: string) => {
+    if (!url) return url;
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    const trimmed = url.replace(/^\/+/, "");
+    return `https://${trimmed}`;
+  }, []);
+
   const { coord: currentCoord, error: locError, get: getCurrent } = useCurrentLocation();
 
   // 資料：以 localStorage + React Query 暫存
-  const { data: cases } = useCasesQuery();
+  const { data: cases, store: caseStore } = useCasesQuery();
   const { data: sheets } = useSheetsCases();
-  const createCase = useCreateCaseMutation();
+  const createCase = useCreateCaseMutation(caseStore);
+
+  const statusSelection = filters.status;
+  const showAllStatuses = !statusSelection.pending && !statusSelection.claimed && !statusSelection.completed;
+
+  const urgencySelection = filters.urgency;
+  const showAllUrgencies = !urgencySelection.emergency && !urgencySelection.reinforcement;
+
+  const caseHasEmergency = useCallback((item: CaseItem | null | undefined) => {
+    if (!item || item.status === "completed") return false;
+    if (typeof item.isEmergency === "boolean") {
+      return item.isEmergency;
+    }
+    const fallback = item.urgency === "emergency" || item.urgency === "both";
+    return fallback;
+  }, []);
+
+  const caseNeedsReinforcement = useCallback((item: CaseItem | null | undefined) => {
+    if (!item || item.status === "completed") return false;
+    if (typeof item.needsReinforcement === "boolean") {
+      return item.needsReinforcement;
+    }
+    if (typeof item.reinforcement === "boolean") {
+      return item.reinforcement;
+    }
+    const fallback = item.urgency === "reinforcement" || item.urgency === "both";
+    return fallback;
+  }, []);
+
+  const isStatusVisible = useCallback(
+    (status?: CaseStatus | string) => {
+      if (status === "completed") return statusSelection.completed || showAllStatuses;
+      if (showAllStatuses) return true;
+      if (!status) return false;
+      if (status === "pending") return statusSelection.pending;
+      if (status === "claimed") return statusSelection.claimed;
+      return false;
+    },
+    [showAllStatuses, statusSelection.pending, statusSelection.claimed, statusSelection.completed]
+  );
+
+  const isUrgencyVisible = useCallback(
+    (item: CaseItem | null | undefined) => {
+      if (showAllUrgencies) return true;
+      if (!item) return false;
+      if (item.status === "completed") return false;
+      const emergencySelected = urgencySelection.emergency;
+      const reinforcementSelected = urgencySelection.reinforcement;
+      if (!emergencySelected && !reinforcementSelected) return true;
+      const hasEmergency = caseHasEmergency(item);
+      const needsReinforcement = caseNeedsReinforcement(item);
+      return (emergencySelected && hasEmergency) || (reinforcementSelected && needsReinforcement);
+    },
+    [showAllUrgencies, urgencySelection.emergency, urgencySelection.reinforcement, caseHasEmergency, caseNeedsReinforcement]
+  );
 
   const markers = useMemo<MapMarker[]>(() => {
-    const a = (cases ?? []).map((c) => ({ id: c.id, position: { lat: c.latitude, lng: c.longitude } }));
-    const b = (sheets?.items ?? []).map((c) => ({ id: c.id, position: { lat: c.latitude, lng: c.longitude } }));
+    const toMarker = (c: CaseItem): MapMarker => ({
+      id: c.id,
+      position: { lat: c.latitude, lng: c.longitude },
+      status: c.status,
+      urgency: c.urgency,
+      isEmergency: caseHasEmergency(c),
+      needsReinforcement: caseNeedsReinforcement(c),
+    });
+    const visibleCases = (cases ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
+    const visibleSheets = (sheets?.items ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
+    const a = visibleCases.map(toMarker);
+    const b = visibleSheets.map(toMarker);
     return [...b, ...a];
-  }, [cases, sheets]);
+  }, [cases, sheets, isStatusVisible, isUrgencyVisible, caseHasEmergency, caseNeedsReinforcement]);
+
+  const selectedHasEmergency = caseHasEmergency(selectedCase);
+  const selectedNeedsReinforcement = caseNeedsReinforcement(selectedCase);
 
   const chooseByMap = () => {
     // 關閉視窗，等待使用者在地圖上取點
@@ -83,18 +213,202 @@ export default function Home() {
 
   const submitReport = async (values: ReportFormValues) => {
     if (!pendingCoord) return;
+    const reporter = (userName || nameInput).trim();
     await createCase.mutateAsync({
       latitude: pendingCoord.lat,
       longitude: pendingCoord.lng,
       reportType: values.reportType,
       content: values.content,
       emergency: values.emergency,
+      reinforcement: values.reinforcement,
       files: values.files,
+      reporterName: reporter || "匿名",
     });
     showDialog(null);
     setPendingCoord(null);
-    setToast("已上傳完畢");
+    setToast("✅ 通報已送出");
     setTimeout(() => setToast(""), 2500);
+  };
+
+  const confirmName = () => {
+    const trimmed = nameInput.trim() || "匿名";
+    setUserName(trimmed);
+    setNameInput(trimmed);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("hualien-user-name", trimmed);
+    }
+    setIsNameConfirmed(true);
+    showDialog(null);
+  };
+
+  const isLocalCase = (item: CaseItem) => caseStore.items.some((c) => c.id === item.id);
+
+  const handleClaim = async () => {
+    if (!selectedCase) return;
+    const name = (userName || nameInput).trim() || "匿名";
+    const claimed = selectedCase.claimedBy ?? [];
+    if (claimed.includes(name)) {
+      setToast("⚠️ 已經認領過囉");
+      setTimeout(() => setToast(""), 2500);
+      return;
+    }
+    const nextClaimed = [...claimed, name];
+    try {
+      if (selectedCase.id) {
+        const res = await fetch("/api/sheets/update", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ caseId: selectedCase.id, claimedBy: nextClaimed }),
+        });
+        if (!res.ok) throw new Error("update-failed");
+        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["cases"] });
+      const updated: CaseItem = { ...selectedCase, claimedBy: nextClaimed, updatedAt: Date.now() };
+      if (isLocalCase(selectedCase)) {
+        caseStore.actions.upsert(updated);
+      }
+      setSelectedCase(updated);
+      setToast("✅ 已認領");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : null;
+      setToast(message ? `⚠️ 認領失敗：${message}` : "⚠️ 認領失敗，請稍後再試");
+    } finally {
+      setTimeout(() => setToast(""), 2500);
+    }
+  };
+
+  const openCompleteDialog = () => {
+    if (!selectedCase) return;
+    setCompletionDescription(selectedCase.completion?.description ?? "");
+    setCompletionFiles([]);
+    setCompletionLoading(false);
+    showDialog("complete");
+  };
+
+  const submitCompletion = async () => {
+    if (!selectedCase) return;
+    const completedBy = (userName || nameInput).trim() || "匿名";
+    setCompletionLoading(true);
+    try {
+      const uploaded = completionFiles.length ? await uploadFilesAndGetUrls(completionFiles) : [];
+      const completedAt = Date.now();
+      if (selectedCase.id) {
+        const res = await fetch("/api/sheets/update", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            caseId: selectedCase.id,
+            status: "completed",
+            completionDescription,
+            completionImages: uploaded,
+            completedBy,
+            completedAt,
+          }),
+        });
+        if (!res.ok) throw new Error("update-failed");
+        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["cases"] });
+      const updated: CaseItem = {
+        ...selectedCase,
+        status: "completed",
+        urgency: "normal",
+        reinforcement: false,
+        completion: {
+          description: completionDescription || selectedCase.completion?.description || undefined,
+          images: uploaded.length
+            ? [...(selectedCase.completion?.images ?? []), ...uploaded]
+            : selectedCase.completion?.images,
+          completedBy,
+          completedAt,
+        },
+        isEmergency: false,
+        needsReinforcement: false,
+        updatedAt: completedAt,
+      };
+      if (isLocalCase(selectedCase)) {
+        caseStore.actions.upsert(updated);
+        await queryClient.invalidateQueries({ queryKey: ["cases"] });
+      }
+      setSelectedCase(updated);
+      setToast("✅ 已標記完成");
+      setCompletionDescription("");
+      setCompletionFiles([]);
+      showDialog(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : null;
+      setToast(message ? `⚠️ 標記完成失敗：${message}` : "⚠️ 標記完成失敗");
+    } finally {
+      setCompletionLoading(false);
+      setTimeout(() => setToast(""), 2500);
+    }
+  };
+
+  const openUpdateDialog = () => {
+    if (!selectedCase) return;
+    setUpdateInitialValues({
+      reportType: selectedCase.status === "completed" ? "completed" : "pending",
+      content: selectedCase.description || "",
+      emergency: caseHasEmergency(selectedCase),
+      reinforcement: caseNeedsReinforcement(selectedCase),
+    });
+    setUpdateLoading(false);
+    showDialog("update");
+  };
+
+  const submitUpdate = async (values: ReportFormValues) => {
+    if (!selectedCase) return;
+    setUpdateLoading(true);
+    try {
+      const uploaded = values.files.length ? await uploadFilesAndGetUrls(values.files) : [];
+      const newImages = uploaded.length ? [...(selectedCase.images ?? []), ...uploaded] : selectedCase.images ?? [];
+      const isEmergency = values.emergency;
+      const needsReinforcement = values.reinforcement;
+      const newStatus: CaseItem["status"] = values.reportType === "completed" ? "completed" : "pending";
+      const newUrgency: CaseItem["urgency"] = isEmergency && needsReinforcement ? "both" : isEmergency ? "emergency" : needsReinforcement ? "reinforcement" : "normal";
+      if (selectedCase.id) {
+        const res = await fetch("/api/sheets/update", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            caseId: selectedCase.id,
+            description: values.content,
+            status: newStatus,
+            emergency: isEmergency,
+            reinforcement: needsReinforcement,
+            images: newImages,
+          }),
+        });
+        if (!res.ok) throw new Error("update-failed");
+        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["cases"] });
+      const updated: CaseItem = {
+        ...selectedCase,
+        description: values.content,
+        status: newStatus,
+        urgency: newUrgency,
+        images: newImages,
+        isEmergency: newStatus === "completed" ? false : isEmergency,
+        needsReinforcement: newStatus === "completed" ? false : needsReinforcement,
+        reinforcement: newStatus === "completed" ? false : needsReinforcement,
+        updatedAt: Date.now(),
+      };
+      if (isLocalCase(selectedCase)) {
+        caseStore.actions.upsert(updated);
+      }
+      setSelectedCase(updated);
+      setToast("✅ 案件已更新");
+      showDialog(null);
+      setUpdateInitialValues(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : null;
+      setToast(message ? `⚠️ 更新失敗：${message}` : "⚠️ 更新失敗，請稍後再試");
+    } finally {
+      setUpdateLoading(false);
+      setTimeout(() => setToast(""), 2500);
+    }
   };
 
   useEffect(() => {
@@ -116,6 +430,14 @@ export default function Home() {
   }, [pendingUseCurrent, locError, showDialog]);
 
   useEffect(() => {
+    if (!selectedCase) return;
+    if (!isStatusVisible(selectedCase.status) || !isUrgencyVisible(selectedCase)) {
+      setSelectedCase(null);
+      if (infoOpen) showDialog(null);
+    }
+  }, [selectedCase, isStatusVisible, isUrgencyVisible, infoOpen, showDialog]);
+
+  useEffect(() => {
     if (centerCommand) {
       const timer = setTimeout(() => setCenterCommand(null), 0);
       return () => clearTimeout(timer);
@@ -124,6 +446,37 @@ export default function Home() {
 
   return (
     <div className="relative h-[100dvh] w-full">
+      <Dialog
+        open={nameOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setIsNameConfirmed(false);
+            showDialog("name");
+          } else {
+            if (isNameConfirmed) {
+              showDialog(null);
+            } else {
+              showDialog("name");
+            }
+          }
+        }}
+      >
+        <DialogContent className="z-[3500]" overlayClassName="z-[3400]" preventOutsideClose={!nameInput.trim()}>
+          <DialogHeader>
+            <DialogTitle>請輸入姓名</DialogTitle>
+            <DialogDescription>方便志工辨識您的身分。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input placeholder="輸入姓名" value={nameInput} onChange={(e) => setNameInput(e.target.value)} autoFocus />
+            <div className="flex justify-end">
+              <Button onClick={confirmName}>
+                確認
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <FiltersBar value={filters} onChange={setFilters} />
       <div className="absolute inset-0 z-0 pt-[42px]">
         <MapView initialCenter={DEFAULT_CENTER} onMapClick={onMapClick} onMarkerClick={(id) => {
@@ -207,6 +560,7 @@ export default function Home() {
           </DialogHeader>
           {pendingCoord ? (
             <div className="space-y-3">
+              <div className="text-sm">通報者：{(userName || nameInput).trim() || "未提供姓名"}</div>
               <div className="text-sm">緯度：{pendingCoord.lat.toFixed(6)}</div>
               <div className="text-sm">經度：{pendingCoord.lng.toFixed(6)}</div>
               <div className="flex justify-end gap-2">
@@ -262,29 +616,43 @@ export default function Home() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden sm:max-h-[70vh]">
           <DialogHeader>
             <DialogTitle>救災通報詳情</DialogTitle>
             <DialogDescription>查看志工回報的即時狀態。</DialogDescription>
           </DialogHeader>
           {selectedCase ? (
-            <div className="space-y-4">
+            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
               <div>
                 <div className="text-xs text-neutral-500">回報狀態</div>
                 <div className="mt-1 text-base font-semibold">
                   {selectedCase.status === "completed" ? "已處理" : "待處理"}
                 </div>
               </div>
-              {selectedCase.urgency !== "normal" && (
+              <div>
+                <div className="text-xs text-neutral-500">通報者</div>
+                <div className="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
+                  {selectedCase.reporterName?.trim() || "未提供姓名"}
+                </div>
+              </div>
+              {selectedCase.status !== "completed" && (selectedHasEmergency || selectedNeedsReinforcement) && (
                 <div className="flex flex-wrap gap-2">
-                  {selectedCase.urgency === "emergency" && <Badge variant="destructive">緊急狀態</Badge>}
-                  {selectedCase.urgency === "reinforcement" && <Badge>需要增援</Badge>}
+                  {selectedHasEmergency && <Badge variant="destructive">緊急狀態</Badge>}
+                  {selectedNeedsReinforcement && <Badge>需要增援</Badge>}
+                </div>
+              )}
+              {selectedCase.claimedBy && selectedCase.claimedBy.length > 0 && (
+                <div>
+                  <div className="text-xs text-neutral-500">認領人</div>
+                  <div className="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
+                    {selectedCase.claimedBy.join("、")}
+                  </div>
                 </div>
               )}
               <div>
                 <div className="text-xs text-neutral-500">通報時間</div>
                 <div className="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
-                  {new Date(selectedCase.createdAt).toLocaleString()}
+                  {formatDate(selectedCase.createdAt)}
                 </div>
               </div>
               <div>
@@ -293,9 +661,58 @@ export default function Home() {
                   {selectedCase.description || "未提供內容"}
                 </p>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline">我要認領</Button>
-                <Button>更新狀況</Button>
+              {selectedCase.images && selectedCase.images.length > 0 && (
+                <div>
+                  <div className="text-xs text-neutral-500">現場照片</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {selectedCase.images.map((src, idx) => (
+                      <div key={`${selectedCase.id}-img-${idx}`} className="relative aspect-[4/3] overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-800">
+                        <Image
+                          src={resolveImageSrc(src)}
+                          alt="救災現場照片"
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 640px) 50vw, 33vw"
+                          unoptimized
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedCase.completion && (
+                <div className="space-y-2">
+                  <div className="text-xs text-neutral-500">完成內容</div>
+                  {selectedCase.completion.description && (
+                    <p className="whitespace-pre-wrap text-sm text-neutral-800 dark:text-neutral-100">
+                      {selectedCase.completion.description}
+                    </p>
+                  )}
+                  {selectedCase.completion.images && selectedCase.completion.images.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {selectedCase.completion.images.map((src, idx) => (
+                        <div key={`${selectedCase.id}-complete-${idx}`} className="relative aspect-[4/3] overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-800">
+                          <Image src={resolveImageSrc(src)} alt="完成照片" fill className="object-cover" sizes="(max-width: 640px) 50vw, 33vw" unoptimized />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="text-xs text-neutral-500">
+                    完成資訊：{selectedCase.completion.completedBy || "未提供"}
+                    {selectedCase.completion.completedAt && ` ・ ${formatDate(selectedCase.completion.completedAt)}`}
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {selectedCase.status !== "completed" && (
+                  <Button variant="outline" onClick={handleClaim}>
+                    我要認領
+                  </Button>
+                )}
+                <Button variant="outline" onClick={openUpdateDialog}>
+                  更新狀況
+                </Button>
+                {selectedCase.status !== "completed" && <Button onClick={openCompleteDialog}>標記完成</Button>}
               </div>
             </div>
           ) : (
@@ -304,9 +721,99 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
+      {/* 更新案件對話框 */}
+      <Dialog
+        open={updateOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            showDialog("update");
+          } else {
+            setUpdateInitialValues(null);
+            setUpdateLoading(false);
+            if (activeDialog === "update") showDialog(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>更新案件</DialogTitle>
+            <DialogDescription>修改案件內容與狀態。</DialogDescription>
+          </DialogHeader>
+          {selectedCase && (
+            <ReportForm
+              latitude={selectedCase.latitude}
+              longitude={selectedCase.longitude}
+              onSubmitReport={submitUpdate}
+              onCancel={() => showDialog(null)}
+              initialValues={updateInitialValues ?? undefined}
+              submitLabel={updateLoading ? "更新中…" : "更新"}
+              loading={updateLoading}
+              existingImages={selectedCase.images}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 標記完成對話框 */}
+      <Dialog
+        open={completeOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            showDialog("complete");
+          } else {
+            setCompletionFiles([]);
+            setCompletionDescription("");
+            setCompletionLoading(false);
+            if (activeDialog === "complete") showDialog(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>標記完成</DialogTitle>
+            <DialogDescription>填寫完成情況並可附上照片。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="mb-2 block" htmlFor="completion-description">
+                完成內容描述
+              </Label>
+              <textarea
+                id="completion-description"
+                className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                rows={4}
+                value={completionDescription}
+                onChange={(e) => setCompletionDescription(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label className="mb-2 block">現場照片</Label>
+              <UploadArea value={completionFiles} onChange={setCompletionFiles} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setCompletionFiles([]);
+                  setCompletionDescription("");
+                  setCompletionLoading(false);
+                  showDialog(null);
+                }}
+              >
+                取消
+              </Button>
+              <Button type="button" onClick={submitCompletion} disabled={completionLoading}>
+                {completionLoading ? "上傳中…" : "確認完成"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* 簡易提示 */}
       {toast && (
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-20 z-[60] rounded bg-black/80 text-white text-sm px-4 py-2">
+        <div className="fixed top-6 right-6 z-[60] flex items-center gap-2 rounded-lg bg-neutral-900/95 px-4 py-3 text-sm font-medium text-white shadow-lg dark:bg-neutral-200/95 dark:text-neutral-900" role="status" aria-live="polite">
           {toast}
         </div>
       )}

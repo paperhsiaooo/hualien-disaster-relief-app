@@ -12,7 +12,7 @@ export function DialogOverlay({ className, ...props }: React.ComponentProps<type
   return (
     <DialogPrimitive.Overlay
       className={[
-        "fixed inset-0 z-40 bg-black/40 backdrop-blur-sm",
+        "fixed inset-0 z-[2400] bg-black/40 backdrop-blur-sm",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className ?? "",
@@ -23,7 +23,6 @@ export function DialogOverlay({ className, ...props }: React.ComponentProps<type
 }
 
 type DialogContentProps = React.ComponentProps<typeof DialogPrimitive.Content> & {
-  containerClassName?: string;
   overlayClassName?: string;
   hideOverlay?: boolean;
   preventOutsideClose?: boolean;
@@ -32,14 +31,14 @@ type DialogContentProps = React.ComponentProps<typeof DialogPrimitive.Content> &
 /**
  * 對話框內容，集中處理樣式與動畫。
  */
-export function DialogContent({ children, className, containerClassName, overlayClassName, hideOverlay, preventOutsideClose, ...props }: DialogContentProps) {
+export function DialogContent({ children, className, overlayClassName, hideOverlay, preventOutsideClose, ...props }: DialogContentProps) {
   return (
     <DialogPortal>
       {!hideOverlay && <DialogOverlay className={overlayClassName} />}
       <DialogPrimitive.Content
         className={[
           // 手機：靠下的 bottom sheet；桌面：置中視窗
-          "fixed z-50 inset-x-2 bottom-2 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
+          "fixed z-[2500] inset-x-2 bottom-2 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
           "bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 w-[calc(100%-16px)] sm:w-auto sm:max-w-lg sm:rounded-xl",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
@@ -78,5 +77,4 @@ export function DialogDescription({ children, className }: { children: React.Rea
     </DialogPrimitive.Description>
   );
 }
-
 
