@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { latitude, longitude, reportType, content, emergency, reinforcement, images = [], reporterName } = body as {
+    const { latitude, longitude, reportType, content, emergency, reinforcement, images = [], reporterName, category } = body as {
       latitude: number;
       longitude: number;
       reportType: "pending" | "completed";
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
       reinforcement: boolean;
       images?: string[];
       reporterName: string;
+      category?: string;
       id?: string;
     };
     if (typeof latitude !== "number" || typeof longitude !== "number") {
@@ -38,12 +39,13 @@ export async function POST(req: NextRequest) {
     const needsReinforcement = reinforcement === true;
 
     await query(
-      `INSERT INTO cases (id, reporter_name, description, latitude, longitude, status, is_emergency, needs_reinforcement, images, claimed_by, completion_description, completion_images, completed_by, completed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO cases (id, reporter_name, category, description, latitude, longitude, status, is_emergency, needs_reinforcement, images, claimed_by, completion_description, completion_images, completed_by, completed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ,
       [
         id,
         reporterName || null,
+        category || null,
         content,
         latitude,
         longitude,
@@ -75,6 +77,7 @@ export async function POST(req: NextRequest) {
       updatedAt: createdAt.getTime(),
       isEmergency,
       needsReinforcement,
+      category: category || "其他災情",
     };
     return Response.json({ item }, { status: 201 });
   } catch (err) {

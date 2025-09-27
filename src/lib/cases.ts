@@ -3,6 +3,7 @@ import type { CaseItem, CaseStatus, CaseUrgency } from "@/types/case";
 export type CaseRow = {
   id: string;
   reporter_name: string | null;
+  category: string | null;
   description: string;
   latitude: number;
   longitude: number;
@@ -72,6 +73,7 @@ export function transformToCaseItem(row: CaseRow): CaseItem {
     urgency: computeUrgency(isEmergency, needsReinforcement),
     images: normalizeArray(row.images),
     reporterName: row.reporter_name ?? undefined,
+    category: row.category ?? undefined,
     reinforcement: needsReinforcement,
     claimedBy: normalizeArray(row.claimed_by),
     completion,

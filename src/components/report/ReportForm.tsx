@@ -13,6 +13,18 @@ import { Button } from "@/components/ui/button";
 import { UploadArea } from "@/components/report/UploadArea";
 import type { CaseReportType } from "@/types/case";
 
+const CATEGORY_OPTIONS = [
+  "其他災情",
+  "環境污染",
+  "基礎設施",
+  "淹水災情",
+  "路樹災情",
+  "橋樑災情",
+  "土石災情",
+  "廣告招牌災情",
+  "道路災情",
+] as const;
+
 const formSchema = z.object({
   reportType: z.enum(["pending", "completed"]),
   content: z
@@ -21,6 +33,7 @@ const formSchema = z.object({
     .max(150, "最多 150 字"),
   emergency: z.boolean(),
   reinforcement: z.boolean(),
+  category: z.enum(CATEGORY_OPTIONS),
 });
 
 export type ReportFormValues = z.infer<typeof formSchema> & {
@@ -58,7 +71,13 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel, init
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: { reportType: "pending", content: "", emergency: false, reinforcement: false },
+    defaultValues: {
+      reportType: "pending",
+      content: "",
+      emergency: false,
+      reinforcement: false,
+      category: CATEGORY_OPTIONS[0],
+    },
   });
 
   const [files, setFiles] = useState<File[]>([]);
@@ -66,6 +85,7 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel, init
   const reportType = watch("reportType");
   const emergencyValue = watch("emergency");
   const reinforcementValue = watch("reinforcement");
+  const categoryValue = watch("category");
   const canUploadNew = retainedExisting.length === 0;
 
   useEffect(() => {
@@ -80,6 +100,7 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel, init
         content: initialValues.content ?? "",
         emergency: initialValues.emergency ?? false,
         reinforcement: initialValues.reinforcement ?? false,
+        category: initialValues.category ?? CATEGORY_OPTIONS[0],
       });
       setRetainedExisting(existingImages ?? []);
       setFiles([]);
@@ -130,7 +151,7 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel, init
   return (
     <form className="space-y-4" onSubmit={handleSubmit(submit)}>
       <div>
-        <Label className="mb-1 block">回報類型</Label>
+        <Label className="mb-1 block">狀態</Label>
         <Select value={reportType} onValueChange={(v) => setValue("reportType", v as CaseReportType)}>
           <SelectTrigger>
             <SelectValue placeholder="選擇回報類型" />
@@ -141,6 +162,23 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel, init
           </SelectContent>
         </Select>
         {errors.reportType && <p className="mt-1 text-sm text-red-600">{errors.reportType.message as string}</p>}
+      </div>
+
+      <div>
+        <Label className="mb-1 block">災情類別</Label>
+        <Select value={categoryValue} onValueChange={(v) => setValue("category", v as typeof CATEGORY_OPTIONS[number], { shouldDirty: true })}>
+          <SelectTrigger>
+            <SelectValue placeholder="選擇災情類別" />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORY_OPTIONS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {errors.category && <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>}
       </div>
 
       <div>

@@ -27,6 +27,7 @@ export type CaseItem = {
   sheetRow?: number;
   isEmergency?: boolean;
   needsReinforcement?: boolean;
+  category?: string;
   createdAt: number;
   updatedAt: number;
 };

@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "leaflet.markercluster/dist/MarkerCluster.css";
+@import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 
 :root {
   --background: #ffffff;
@@ -52,3 +54,166 @@ body {
 [data-state="open"].zoom-in-95 { animation: in-zoom 150ms ease-out }
 [data-state="closed"].zoom-out-95 { animation: out-zoom 150ms ease-in }
 [data-state="open"].slide-in-from-bottom-8 { transform-origin: bottom; }
+
+.marker-cluster-custom {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  border: 3px solid #fff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+}
+
+.custom-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.marker-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.marker-circle {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* 緊急案件：將白框改為紅色 */
+.marker-circle.marker-circle--emergency {
+  border-color: #ef4444;
+}
+
+.marker-triangle svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3));
+  pointer-events: none;
+}
+
+/* 緊急案件：覆蓋三角形外框顏色為紅色 */
+.marker-triangle--emergency svg path {
+  stroke: #ef4444;
+}
+
+.marker-symbol {
+  line-height: 1;
+  pointer-events: none;
+}
+
+.marker-overlay {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.marker-overlay-top-right {
+  top: -6px;
+  right: -6px;
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.marker-overlay-bottom-left {
+  bottom: -6px;
+  left: -6px;
+  background: #f97316;
+  color: #111827;
+}
+
+.selection-pin-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.selection-pin {
+  position: relative;
+  display: block;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 20px solid #ef4444;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+}
+
+.selection-pin::after {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: -7px;
+  width: 14px;
+  height: 14px;
+  background: #ef4444;
+  border-radius: 9999px;
+  border: 2px solid #ffffff;
+}
+
+.selection-tooltip {
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: #1f2937;
+}
+
+.selection-tooltip__coords {
+  line-height: 1.4;
+}
+
+.selection-tooltip__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.selection-tooltip__button {
+  flex: 1 1 0;
+  border: 1px solid #d4d4d4;
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: #ffffff;
+  font-size: 12px;
+  color: #1f2937;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.selection-tooltip__button:hover {
+  background: #f3f4f6;
+}
+
+.selection-tooltip__button--confirm {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.selection-tooltip__button--confirm:hover {
+  background: #1d4ed8;
+}

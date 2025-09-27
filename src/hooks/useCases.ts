@@ -34,6 +34,7 @@ type CreateCaseArgs = {
   reinforcement: boolean;
   files: File[];
   reporterName: string;
+  category: string;
 };
 
 type LocalCaseStore = ReturnType<typeof useLocalCaseStore>;
@@ -57,6 +58,7 @@ export function useCreateCaseMutation(store: LocalCaseStore) {
           reinforcement: args.reinforcement,
           images: urls,
           reporterName: args.reporterName,
+          category: args.category,
         }),
       });
       if (!res.ok) {
@@ -64,6 +66,7 @@ export function useCreateCaseMutation(store: LocalCaseStore) {
         throw new Error(data?.error || "建立案件失敗");
       }
       const { item } = (await res.json()) as { item: CaseItem };
+      item.category = args.category;
       store.actions.upsert(item);
       return item;
     },

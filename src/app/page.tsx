@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useCurrentLocation } from "@/hooks/useCurrentLocation";
 import type { LatLng, MapMarker } from "@/types/map";
 import type { MapViewProps } from "@/components/map/MapView";
@@ -35,13 +36,31 @@ const formatDate = (value?: number) => {
   return `${y}年${m}月${d}日`;
 };
 
-type ReportCoreValues = Pick<ReportFormValues, "reportType" | "content" | "emergency" | "reinforcement">;
+type ReportCoreValues = Pick<ReportFormValues, "reportType" | "content" | "emergency" | "reinforcement" | "category">;
 
 type ActiveDialog = "name" | "start" | "confirm" | "report" | "info" | "update" | "complete";
 
 const DEFAULT_CENTER: LatLng = { lat: 23.6539, lng: 121.4231 };
 
-export default function Home() {
+// Keep a local copy of category options for type-narrowing when populating update form
+const CATEGORY_OPTIONS_PAGE = [
+  "其他災情",
+  "環境污染",
+  "基礎設施",
+  "淹水災情",
+  "路樹災情",
+  "橋樑災情",
+  "土石災情",
+  "廣告招牌災情",
+  "道路災情",
+] as const;
+type CategoryOption = (typeof CATEGORY_OPTIONS_PAGE)[number];
+const resolveCategoryOption = (value?: string): CategoryOption =>
+  (CATEGORY_OPTIONS_PAGE.includes((value as CategoryOption) ?? "" as CategoryOption)
+    ? (value as CategoryOption)
+    : "其他災情");
+
+function HomeContent() {
   // 篩選狀態
   const [filters, setFilters] = useState({ status: { pending: false, claimed: false, completed: false }, urgency: { emergency: false, reinforcement: false } });
 
@@ -71,6 +90,9 @@ export default function Home() {
   const [updateLoading, setUpdateLoading] = useState(false);
 
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+
+  // removed unused copyToClipboard and shareUrl to satisfy build lint rules
 
   const showDialog = useCallback((dialog: ActiveDialog | null) => {
     setActiveDialog(dialog);
@@ -96,6 +118,11 @@ export default function Home() {
       setNameInput(userName || "匿名");
     }
   }, [nameOpen, userName]);
+
+  // 依網址參數開啟案件詳情
+  // 注意：此 effect 需在 cases/sheets 初始化之後宣告，避免 TDZ 錯誤
+  // 參考：https://developer.mozilla.org/docs/Web/JavaScript/Reference/Errors/Cant_access_lexical_declaration_before_init
+  // 已移至下方（宣告 cases/sheets 之後）。
 
   const resolveImageSrc = useCallback((url: string) => {
     if (!url) return url;
@@ -137,6 +164,21 @@ export default function Home() {
   const { data: cases, store: caseStore } = useCasesQuery();
   const { data: sheets } = useSheetsCases();
   const createCase = useCreateCaseMutation(caseStore);
+
+  // 依網址參數開啟案件詳情（在 cases/sheets 宣告之後，避免 TDZ）
+  useEffect(() => {
+    const caseIdParam = searchParams?.get("case");
+    if (!caseIdParam) return;
+    if (selectedCase?.id === caseIdParam && activeDialog === "info") return;
+    const combined = (sheets?.items ?? []).concat(cases ?? []);
+    const found = combined.find((item) => item.id === caseIdParam);
+    if (!found) return;
+    setPendingCoord({ lat: found.latitude, lng: found.longitude });
+    setMapSelectionActive(false);
+    setCenterCommand({ lat: found.latitude, lng: found.longitude });
+    setSelectedCase(found);
+    showDialog("info");
+  }, [searchParams, cases, sheets, selectedCase?.id, showDialog, activeDialog]);
 
   const statusSelection = filters.status;
   const showAllStatuses = !statusSelection.pending && !statusSelection.claimed && !statusSelection.completed;
@@ -234,12 +276,14 @@ export default function Home() {
   };
 
   const onMapClick = (c: LatLng) => {
-    if (!mapSelectionActive && !confirmOpen) return;
-    setSelectedCase(null);
-    setPendingCoord(c);
-    setMapSelectionActive(false);
-    if (!confirmOpen) {
-      showDialog("confirm");
+    if (mapSelectionActive) {
+      setSelectedCase(null);
+      setPendingCoord(c);
+      return;
+    }
+    if (confirmOpen) {
+      setPendingCoord(c);
+      return;
     }
   };
 
@@ -259,6 +303,7 @@ export default function Home() {
       reinforcement: values.reinforcement,
       files: values.files,
       reporterName: reporter || "匿名",
+      category: values.category,
     });
     showDialog(null);
     setPendingCoord(null);
@@ -325,6 +370,25 @@ export default function Home() {
     setCompletionLoading(false);
     showDialog("complete");
   };
+
+  const confirmSelectionFromMap = () => {
+    if (!pendingCoord) return;
+    setMapSelectionActive(false);
+    showDialog("confirm");
+  };
+
+  const resetSelectionPin = () => {
+    setPendingCoord(null);
+    setMapSelectionActive(true);
+  };
+
+  const mapSelectionOverlay = mapSelectionActive && pendingCoord
+    ? {
+        coord: pendingCoord,
+        onConfirm: confirmSelectionFromMap,
+        onReset: resetSelectionPin,
+      }
+    : undefined;
 
   const submitCompletion = async () => {
     if (!selectedCase) return;
@@ -394,6 +458,7 @@ export default function Home() {
       content: selectedCase.description || "",
       emergency: caseHasEmergency(selectedCase),
       reinforcement: caseNeedsReinforcement(selectedCase),
+      category: resolveCategoryOption(selectedCase.category),
     });
     setUpdateLoading(false);
     showDialog("update");
@@ -421,6 +486,7 @@ export default function Home() {
             emergency: isEmergency,
             reinforcement: needsReinforcement,
             images: newImages,
+            category: values.category,
           }),
         });
         if (!res.ok) {
@@ -439,6 +505,7 @@ export default function Home() {
         isEmergency: newStatus === "completed" ? false : isEmergency,
         needsReinforcement: newStatus === "completed" ? false : needsReinforcement,
         reinforcement: newStatus === "completed" ? false : needsReinforcement,
+        category: values.category,
         updatedAt: Date.now(),
       };
       if (isLocalCase(selectedCase)) {
@@ -531,7 +598,7 @@ export default function Home() {
 
       <FiltersBar value={filters} onChange={setFilters} />
       <div className="absolute inset-0 z-0 pt-[42px]">
-        <MapView initialCenter={DEFAULT_CENTER} onMapClick={onMapClick} onMarkerClick={async (id) => {
+        <MapView initialCenter={DEFAULT_CENTER} selection={mapSelectionOverlay} onMapClick={onMapClick} onMarkerClick={async (id) => {
           try {
             const res = await fetch(`/api/sheets/list?id=${encodeURIComponent(id)}`, { cache: "no-store" });
             if (!res.ok) throw new Error(`查詢案件失敗 (${res.status})`);
@@ -620,7 +687,7 @@ export default function Home() {
         <DialogContent hideOverlay>
           <DialogHeader>
             <DialogTitle>確認座標</DialogTitle>
-            <DialogDescription>請在地圖上點擊選取位置，或確認座標後繼續。</DialogDescription>
+            <DialogDescription>請確認以下資訊是否正確。</DialogDescription>
           </DialogHeader>
           {pendingCoord ? (
             <div className="space-y-3">
@@ -698,6 +765,12 @@ export default function Home() {
                 <div className="text-xs text-neutral-500">通報者</div>
                 <div className="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
                   {selectedCase.reporterName?.trim() || "未提供姓名"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-neutral-500">災情類別</div>
+                <div className="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
+                  {selectedCase.category || "其他災情"}
                 </div>
               </div>
               {selectedCase.status !== "completed" && (selectedHasEmergency || selectedNeedsReinforcement) && (
@@ -896,5 +969,13 @@ export default function Home() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={null}>
+      <HomeContent />
+    </Suspense>
   );
 }

@@ -9,6 +9,7 @@ type UpdatePayload = {
   emergency?: boolean;
   reinforcement?: boolean;
   images?: string[];
+  category?: string;
 };
 
 // 為符合 Next.js 內部的 Handler 第二參數結構，這裡的 params 需為 Promise 型別且為必填
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     const body = (await req.json()) as UpdatePayload;
-    const { description, status, emergency, reinforcement, images } = body;
+    const { description, status, emergency, reinforcement, images, category } = body;
     const rows = await query<CaseRow[]>("SELECT * FROM cases WHERE id = ?", [caseId]);
     if (!rows.length) {
       return Response.json({ error: "案件不存在" }, { status: 404 });
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
            is_emergency = ?,
            needs_reinforcement = ?,
            images = ?,
+           category = ?,
            updated_at = CURRENT_TIMESTAMP(3)
        WHERE id = ?`,
       [
@@ -55,6 +57,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         nextStatus === "completed" ? 0 : nextEmergency ? 1 : 0,
         nextStatus === "completed" ? 0 : nextReinforcement ? 1 : 0,
         JSON.stringify(nextImages),
+        typeof category === "string" ? category : current.category ?? null,
         caseId,
       ]
     );

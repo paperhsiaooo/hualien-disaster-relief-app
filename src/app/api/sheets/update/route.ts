@@ -11,6 +11,7 @@ type UpdatePayload = {
   emergency?: boolean;
   reinforcement?: boolean;
   images?: string[];
+  category?: string;
   completionDescription?: string;
   completionImages?: string[];
   completedBy?: string;
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
       emergency,
       reinforcement,
       images,
+      category,
       completionDescription,
       completionImages,
       completedBy,
@@ -109,6 +111,10 @@ export async function POST(req: NextRequest) {
         updates.push("images = ?");
         params.push(JSON.stringify(images));
       }
+      if (typeof category === "string") {
+        updates.push("category = ?");
+        params.push(category || null);
+      }
       if (completionDescription !== undefined) {
         updates.push("completion_description = ?");
         params.push(completionDescription);
@@ -157,6 +163,8 @@ export async function POST(req: NextRequest) {
     if (images) {
       fullRow[8] = images.join(", ");
     }
+    // 若 Sheet 有保留類別欄位，可在此指定對應欄位索引
+    // 目前不更新 Sheet 類別欄，僅於 DB fallback 時處理
     if (completionDescription !== undefined) {
       fullRow[10] = completionDescription;
     }
