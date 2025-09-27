@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, TileLayer, Marker, Tooltip, useMapEvent, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Tooltip, useMapEvent, useMap, ZoomControl } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -42,6 +42,7 @@ export type MapViewProps = {
   center?: LatLngShape; // 若提供，會在變更時自動移動地圖中心
   zoom?: number; // 若提供，center 變更時一併套用縮放
   zoomControl?: boolean; // 是否顯示 Leaflet 內建縮放控制
+  zoomControlPosition?: L.ControlPosition; // 縮放控制位置
   markers?: MapMarkerShape[];
   onMapClick?: (coord: LatLngShape) => void;
   onMarkerClick?: (id: string) => void;
@@ -57,7 +58,7 @@ export type MapViewProps = {
  * - 點擊地圖可回傳座標
  * - 支援外部傳入 markers 顯示
  */
-export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, center: externalCenter, zoom: externalZoom, zoomControl = true, markers = [], onMapClick, onMarkerClick, selection }: MapViewProps) {
+export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, center: externalCenter, zoom: externalZoom, zoomControl = true, zoomControlPosition = "bottomleft", markers = [], onMapClick, onMarkerClick, selection }: MapViewProps) {
   const iconCache = useRef(new Map<string, L.DivIcon>());
   const [clusterReady, setClusterReady] = useState(false);
 
@@ -149,8 +150,9 @@ export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, cente
   };
 
   return (
-    <MapContainer center={[initialCenter.lat, initialCenter.lng]} zoom={14} style={{ width: "100%", height: "100%" }} zoomControl={zoomControl}>
+    <MapContainer center={[initialCenter.lat, initialCenter.lng]} zoom={14} style={{ width: "100%", height: "100%" }} zoomControl={false}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      {zoomControl !== false && <ZoomControl position={zoomControlPosition} />}
       <CenterController center={externalCenter} zoom={externalZoom} />
       <MapEvents />
       {clusterReady ? (
