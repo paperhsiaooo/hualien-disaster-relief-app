@@ -12,6 +12,7 @@ type GoogleMapsProviderProps = {
  */
 export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID; // 用於 Advanced Markers
   if (!apiKey) {
     // 在沒有 API Key 時給予明確提示，避免白屏。
     return (
@@ -20,7 +21,12 @@ export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
       </div>
     );
   }
-  return <APIProvider apiKey={apiKey}>{children}</APIProvider>;
+  return (
+    <APIProvider apiKey={apiKey} libraries={["marker"]}>
+      {/* 將 mapId 透過 context 傳遞由子元件取用；這裡先放在 data-attr（簡單），或可用 React Context 擴充 */}
+      <div data-map-id={mapId || ""}>{children}</div>
+    </APIProvider>
+  );
 }
 
 

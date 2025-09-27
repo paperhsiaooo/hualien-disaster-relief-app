@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { Map, AdvancedMarker, MapCameraChangedEvent, useMap } from "@vis.gl/react-google-maps";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Map, AdvancedMarker, Marker, MapCameraChangedEvent, useMap, type MapMouseEvent } from "@vis.gl/react-google-maps";
 
 export type LatLng = { lat: number; lng: number };
 
 type MapViewProps = {
   initialCenter?: LatLng;
+  center?: LatLng; // 若提供，會在變更時自動移動地圖中心
   markers?: LatLng[];
   onMapClick?: (coord: LatLng) => void;
 };
@@ -16,8 +17,10 @@ type MapViewProps = {
  * - 點擊地圖可回傳座標
  * - 支援外部傳入 markers 顯示
  */
-export function MapView({ initialCenter = { lat: 23.991, lng: 121.601 }, markers = [], onMapClick }: MapViewProps) {
-  const [center, setCenter] = useState<LatLng>(initialCenter);
+export function MapView({ initialCenter = { lat: 23.991, lng: 121.601 }, center: externalCenter, markers = [], onMapClick }: MapViewProps) {
+  const [mapCenter, setMapCenter] = useState<LatLng>(initialCenter);
+  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID;
+  const map = useMap();
   const mapOptions = useMemo(
     () => ({
       disableDefaultUI: true,
@@ -27,15 +30,22 @@ export function MapView({ initialCenter = { lat: 23.991, lng: 121.601 }, markers
     []
   );
 
-  const handleClick = useCallback((e: google.maps.MapMouseEvent) => {
-    const lat = e.latLng?.lat();
-    const lng = e.latLng?.lng();
-    if (lat && lng && onMapClick) onMapClick({ lat, lng });
+  const handleClick = useCallback((e: MapMouseEvent) => {
+    const lat = e.detail.latLng?.lat;
+    const lng = e.detail.latLng?.lng;
+    if (typeof lat === "number" && typeof lng === "number" && onMapClick) onMapClick({ lat, lng });
   }, [onMapClick]);
 
   const handleCameraChanged = useCallback((e: MapCameraChangedEvent) => {
-    if (e.detail.center) setCenter(e.detail.center as LatLng);
+    if (e.detail.center) setMapCenter(e.detail.center as LatLng);
   }, []);
+
+  // 外部傳入 center 時，主動移動地圖中心
+  useEffect(() => {
+    if (externalCenter && map) {
+      map.setCenter(externalCenter as google.maps.LatLngLiteral);
+    }
+  }, [externalCenter, map]);
 
   return (
     <Map
@@ -43,15 +53,20 @@ export function MapView({ initialCenter = { lat: 23.991, lng: 121.601 }, markers
       defaultZoom={12}
       onClick={handleClick}
       onCameraChanged={handleCameraChanged}
-      mapId={undefined}
+      mapId={mapId || undefined}
       style={{ width: "100%", height: "100%" }}
       gestureHandling={mapOptions.gestureHandling}
       disableDefaultUI={mapOptions.disableDefaultUI}
       clickableIcons={mapOptions.clickableIcons}
     >
-      {markers.map((m, idx) => (
-        <AdvancedMarker key={idx} position={{ lat: m.lat, lng: m.lng }} />
-      ))}
+      {markers.map((m, idx) => {
+        // 若沒有 mapId，退回使用一般 Marker，避免 Advanced Marker 警告
+        return mapId ? (
+          <AdvancedMarker key={idx} position={{ lat: m.lat, lng: m.lng }} />
+        ) : (
+          <Marker key={idx} position={{ lat: m.lat, lng: m.lng }} />
+        );
+      })}
     </Map>
   );
 }

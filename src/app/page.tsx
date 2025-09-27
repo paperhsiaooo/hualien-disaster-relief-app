@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapView, useCurrentLocation, type LatLng } from "@/components/map/MapView";
 import { FAB } from "@/components/map/FAB";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { FiltersBar } from "@/components/filters/FiltersBar";
 import { ReportForm, type ReportFormValues } from "@/components/report/ReportForm";
 import { useCasesQuery, useCreateCaseMutation } from "@/hooks/useCases";
+import { useSheetsCases } from "@/hooks/useSheets";
 
 export default function Home() {
   // 篩選狀態
@@ -21,17 +22,25 @@ export default function Home() {
   const [pendingUseCurrent, setPendingUseCurrent] = useState(false);
 
   const { coord: currentCoord, error: locError, get: getCurrent } = useCurrentLocation();
+  // 掛載後嘗試取得使用者位置；若失敗則 MapView 會顯示花蓮市預設中心
+  useEffect(() => { getCurrent(); }, [getCurrent]);
 
   // 資料：以 localStorage + React Query 暫存
   const { data: cases } = useCasesQuery();
+  const { data: sheets } = useSheetsCases();
   const createCase = useCreateCaseMutation();
 
-  const markers = useMemo<LatLng[]>(() => (cases ?? []).map((c) => ({ lat: c.latitude, lng: c.longitude })), [cases]);
+  const markers = useMemo<LatLng[]>(() => {
+    const a = (cases ?? []).map((c) => ({ lat: c.latitude, lng: c.longitude }));
+    const b = (sheets?.items ?? []).map((c) => ({ lat: c.latitude, lng: c.longitude }));
+    return [...a, ...b];
+  }, [cases, sheets]);
 
   const chooseByMap = () => {
-    // 引導使用者點地圖，並關閉當前視窗
-    alert("請在地圖上點擊以選取座標");
+    // 直接開啟「確認座標」視窗，並讓覆蓋層可點穿以便在地圖上取點
     setStartOpen(false);
+    setPendingCoord(null);
+    setConfirmOpen(true);
   };
 
   const chooseByCurrent = async () => {
@@ -74,7 +83,7 @@ export default function Home() {
     <div className="relative h-[100dvh] w-full">
       <FiltersBar value={filters} onChange={setFilters} />
       <div className="absolute inset-0 pt-[42px]">
-        <MapView onMapClick={onMapClick} markers={markers} />
+        <MapView onMapClick={onMapClick} markers={markers} center={currentCoord ?? { lat: 23.991, lng: 121.601 }} />
         {/* 簡易：未實作標籤點擊後聚焦；後續可加入 Marker cluster 與點擊詳情 */}
       </div>
 
@@ -106,10 +115,10 @@ export default function Home() {
 
       {/* 確認座標對話框 */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
+        <DialogContent hideOverlay>
           <DialogHeader>
             <DialogTitle>確認座標</DialogTitle>
-            <DialogDescription>請確認位置資訊是否正確。</DialogDescription>
+            <DialogDescription>請在地圖上點擊選取位置，或確認座標後繼續。</DialogDescription>
           </DialogHeader>
           {pendingCoord ? (
             <div className="space-y-3">

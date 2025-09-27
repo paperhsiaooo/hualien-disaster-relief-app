@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 const ACCEPT = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_FILES = 3;
+const MAX_FILES = 1;
 
 export type UploadAreaProps = {
   value: File[];
@@ -79,7 +79,7 @@ export function UploadArea({ value, onChange }: UploadAreaProps) {
         ref={inputRef}
         type="file"
         accept={ACCEPT.join(",")}
-        multiple
+        multiple={false}
         className="hidden"
         onChange={(e) => onFiles(e.target.files)}
       />

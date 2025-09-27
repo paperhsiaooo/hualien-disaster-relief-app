@@ -8,10 +8,15 @@ export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogPortal = DialogPrimitive.Portal;
 export const DialogClose = DialogPrimitive.Close;
 
-export function DialogOverlay(props: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+export function DialogOverlay({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
   return (
     <DialogPrimitive.Overlay
-      className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+      className={[
+        "fixed inset-0 z-40 bg-black/40 backdrop-blur-sm",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        className ?? "",
+      ].join(" ")}
       {...props}
     />
   );
@@ -19,15 +24,18 @@ export function DialogOverlay(props: React.ComponentProps<typeof DialogPrimitive
 
 type DialogContentProps = React.ComponentProps<typeof DialogPrimitive.Content> & {
   containerClassName?: string;
+  overlayClassName?: string;
+  hideOverlay?: boolean;
+  preventOutsideClose?: boolean;
 };
 
 /**
  * 對話框內容，集中處理樣式與動畫。
  */
-export function DialogContent({ children, className, containerClassName, ...props }: DialogContentProps) {
+export function DialogContent({ children, className, containerClassName, overlayClassName, hideOverlay, preventOutsideClose, ...props }: DialogContentProps) {
   return (
     <DialogPortal>
-      <DialogOverlay />
+      {!hideOverlay && <DialogOverlay className={overlayClassName} />}
       <DialogPrimitive.Content
         className={[
           // 手機：靠下的 bottom sheet；桌面：置中視窗
@@ -40,6 +48,7 @@ export function DialogContent({ children, className, containerClassName, ...prop
           "p-4 sm:p-6",
           className ?? "",
         ].join(" ")}
+        onInteractOutside={preventOutsideClose ? (e) => e.preventDefault() : undefined}
         {...props}
       >
         {children}
