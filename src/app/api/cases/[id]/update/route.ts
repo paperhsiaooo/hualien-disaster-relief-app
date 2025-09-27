@@ -35,6 +35,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const nextReinforcement = reinforcement ?? current.needsReinforcement ?? false;
     const nextImages = Array.isArray(images) ? images : current.images ?? [];
 
+    // 後端強制：僅檢查本次傳入的 images 是否超過 1 張
+    if (Array.isArray(images) && images.length > 1) {
+      return Response.json({ error: "更新僅允許 1 張照片" }, { status: 400 });
+    }
+
     await query(
       `UPDATE cases
        SET description = ?,

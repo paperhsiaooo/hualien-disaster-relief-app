@@ -293,20 +293,20 @@ export default function Home() {
     const nextClaimed = [...claimed, name];
     try {
       if (selectedCase.id) {
-        const res = await fetch("/api/sheets/update", {
+        const res = await fetch(`/api/cases/${selectedCase.id}/claim`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ caseId: selectedCase.id, claimedBy: nextClaimed }),
+          body: JSON.stringify({ name }),
         });
-        if (!res.ok) throw new Error("update-failed");
-        // sheets 查詢已移除
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.error || `update-failed (${res.status})`);
+        }
+        const { item } = (await res.json()) as { item: CaseItem };
+        caseStore.actions.upsert(item);
       }
       await queryClient.invalidateQueries({ queryKey: ["cases"] });
-      const updated: CaseItem = { ...selectedCase, claimedBy: nextClaimed, updatedAt: Date.now() };
-      if (isLocalCase(selectedCase)) {
-        caseStore.actions.upsert(updated);
-      }
-      setSelectedCase(updated);
+      setSelectedCase((prev) => (prev ? { ...prev, claimedBy: nextClaimed, updatedAt: Date.now() } : prev));
       setToast("✅ 已認領");
       showDialog(null);
     } catch (err) {
@@ -334,20 +334,22 @@ export default function Home() {
       const uploaded = completionFiles.length ? await uploadFilesAndGetUrls(completionFiles) : [];
       const completedAt = Date.now();
       if (selectedCase.id) {
-        const res = await fetch("/api/sheets/update", {
+        const res = await fetch(`/api/cases/${selectedCase.id}/complete`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            caseId: selectedCase.id,
-            status: "completed",
             completionDescription,
             completionImages: uploaded,
             completedBy,
             completedAt,
           }),
         });
-        if (!res.ok) throw new Error("update-failed");
-        // sheets 查詢已移除
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.error || `update-failed (${res.status})`);
+        }
+        const { item } = (await res.json()) as { item: CaseItem };
+        caseStore.actions.upsert(item);
       }
       await queryClient.invalidateQueries({ queryKey: ["cases"] });
       const updated: CaseItem = {
@@ -409,11 +411,10 @@ export default function Home() {
       const newStatus: CaseItem["status"] = values.reportType === "completed" ? "completed" : "pending";
       const newUrgency: CaseItem["urgency"] = isEmergency && needsReinforcement ? "both" : isEmergency ? "emergency" : needsReinforcement ? "reinforcement" : "normal";
       if (selectedCase.id) {
-        const res = await fetch("/api/sheets/update", {
+        const res = await fetch(`/api/cases/${selectedCase.id}/update`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            caseId: selectedCase.id,
             description: values.content,
             status: newStatus,
             emergency: isEmergency,
@@ -421,8 +422,12 @@ export default function Home() {
             images: newImages,
           }),
         });
-        if (!res.ok) throw new Error("update-failed");
-        // sheets 查詢已移除
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.error || `update-failed (${res.status})`);
+        }
+        const { item } = (await res.json()) as { item: CaseItem };
+        caseStore.actions.upsert(item);
       }
       await queryClient.invalidateQueries({ queryKey: ["cases"] });
       const updated: CaseItem = {
@@ -514,6 +519,12 @@ export default function Home() {
                 確認
               </Button>
             </div>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <Button variant="ghost" onClick={() => showDialog(null)}>關閉</Button>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <Button variant="ghost" onClick={() => showDialog(null)}>關閉</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -757,22 +768,25 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              <div className="flex flex-wrap justify-end gap-2">
+              <div className="grid w-full grid-cols-3 gap-2">
                 {selectedCase.status !== "completed" && (
-                  <Button variant="outline" onClick={handleClaim} disabled={claimLoading}>
+                  <Button className="w-full" variant="outline" onClick={handleClaim} disabled={claimLoading}>
                     {claimLoading ? "認領中…" : "我要認領"}
                   </Button>
                 )}
                 {selectedCase.status !== "completed" && (
-                  <Button variant="outline" onClick={openUpdateDialog} disabled={claimLoading}>
+                  <Button className="w-full" variant="outline" onClick={openUpdateDialog} disabled={claimLoading}>
                     更新狀況
                   </Button>
                 )}
                 {selectedCase.status !== "completed" && (
-                  <Button onClick={openCompleteDialog} disabled={claimLoading}>
+                  <Button className="w-full" onClick={openCompleteDialog} disabled={claimLoading}>
                     標記完成
                   </Button>
                 )}
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button variant="ghost" onClick={() => showDialog(null)}>關閉</Button>
               </div>
             </div>
           ) : (

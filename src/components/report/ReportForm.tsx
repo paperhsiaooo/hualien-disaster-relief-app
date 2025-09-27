@@ -66,6 +66,7 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel, init
   const reportType = watch("reportType");
   const emergencyValue = watch("emergency");
   const reinforcementValue = watch("reinforcement");
+  const canUploadNew = retainedExisting.length === 0;
 
   useEffect(() => {
     register("emergency");
@@ -160,8 +161,12 @@ export function ReportForm({ latitude, longitude, onSubmitReport, onCancel, init
       </div>
 
       <div>
-        <Label className="mb-1 block">上傳佐證</Label>
-        <UploadArea value={files} onChange={setFiles} />
+        <Label className="mb-1 block">上傳照片</Label>
+        {canUploadNew ? (
+          <UploadArea value={files} onChange={setFiles} />
+        ) : (
+          <p className="text-xs text-neutral-500">已有現場照片，若要新增，請先移除既有照片。</p>
+        )}
       </div>
 
       {existingImages && existingImages.length > 0 && (
