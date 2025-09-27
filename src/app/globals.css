@@ -24,3 +24,28 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* 行動優化：Dialog 動畫與地圖占滿 */
+@keyframes in-fade {
+  from { opacity: 0 }
+  to { opacity: 1 }
+}
+@keyframes out-fade {
+  from { opacity: 1 }
+  to { opacity: 0 }
+}
+@keyframes in-zoom {
+  from { transform: scale(0.95) translateY(8px) }
+  to { transform: scale(1) translateY(0) }
+}
+@keyframes out-zoom {
+  from { transform: scale(1) translateY(0) }
+  to { transform: scale(0.95) translateY(8px) }
+}
+
+/* Radix data-state 樣式對應 */
+[data-state="open"].animate-in { animation: in-fade 150ms ease-out }
+[data-state="closed"].animate-out { animation: out-fade 150ms ease-in }
+[data-state="open"].zoom-in-95 { animation: in-zoom 150ms ease-out }
+[data-state="closed"].zoom-out-95 { animation: out-zoom 150ms ease-in }
+[data-state="open"].slide-in-from-bottom-8 { transform-origin: bottom; }
