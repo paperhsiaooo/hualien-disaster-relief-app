@@ -2,9 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalCaseStore } from "@/hooks/useLocalCaseStore";
-import { CaseItem, CaseUrgency } from "@/types/case";
+import { CaseItem } from "@/types/case";
 import { uploadFilesAndGetUrls } from "@/lib/uploads";
-import { appendToSheet } from "@/lib/sheets";
 
 const KEY = {
   list: ["cases"] as const,
@@ -14,7 +13,13 @@ export function useCasesQuery() {
   const store = useLocalCaseStore();
   const query = useQuery({
     queryKey: KEY.list,
-    queryFn: async () => store.items,
+    queryFn: async (): Promise<CaseItem[]> => {
+      const res = await fetch("/api/cases", { cache: "no-store" });
+      if (!res.ok) throw new Error("無法讀取案件資料");
+      const data = (await res.json()) as { items: CaseItem[] };
+      store.setItems(data.items);
+      return data.items;
+    },
     initialData: store.items,
   });
   return { ...query, store } as const;
@@ -38,33 +43,28 @@ export function useCreateCaseMutation(store: LocalCaseStore) {
 
   return useMutation({
     mutationFn: async (args: CreateCaseArgs) => {
-      const now = Date.now();
       const urls = await uploadFilesAndGetUrls(args.files);
 
-      const isEmergency = args.emergency;
-      const needsReinforcement = args.reinforcement;
-      const urgency: CaseUrgency = isEmergency && needsReinforcement ? "both" : isEmergency ? "emergency" : needsReinforcement ? "reinforcement" : "normal";
-
-      const item: CaseItem = {
-        id: crypto.randomUUID(),
-        description: args.content,
-        latitude: args.latitude,
-        longitude: args.longitude,
-        status: args.reportType === "completed" ? "completed" : "pending",
-        urgency,
-        images: urls,
-        reporterName: args.reporterName,
-        reinforcement: needsReinforcement,
-        isEmergency,
-        needsReinforcement,
-        claimedBy: [],
-        completion: undefined,
-        createdAt: now,
-        updatedAt: now,
-      };
+      const res = await fetch("/api/cases", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          latitude: args.latitude,
+          longitude: args.longitude,
+          reportType: args.reportType,
+          content: args.content,
+          emergency: args.emergency,
+          reinforcement: args.reinforcement,
+          images: urls,
+          reporterName: args.reporterName,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "建立案件失敗");
+      }
+      const { item } = (await res.json()) as { item: CaseItem };
       store.actions.upsert(item);
-      // 後送 Google Sheets（最佳努力）
-      await appendToSheet(item).catch(() => {});
       return item;
     },
     onSuccess: () => {

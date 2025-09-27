@@ -18,7 +18,6 @@ import { FiltersBar } from "@/components/filters/FiltersBar";
 import { ReportForm, type ReportFormValues } from "@/components/report/ReportForm";
 import { UploadArea } from "@/components/report/UploadArea";
 import { useCasesQuery, useCreateCaseMutation } from "@/hooks/useCases";
-import { useSheetsCases } from "@/hooks/useSheets";
 import { uploadFilesAndGetUrls } from "@/lib/uploads";
 
 const CDN_BASE_URL = "https://hualien-disaster-relief-app.cdn.liwei-cup.com";
@@ -135,7 +134,6 @@ export default function Home() {
 
   // 資料：以 localStorage + React Query 暫存
   const { data: cases, store: caseStore } = useCasesQuery();
-  const { data: sheets } = useSheetsCases();
   const createCase = useCreateCaseMutation(caseStore);
 
   const statusSelection = filters.status;
@@ -202,24 +200,8 @@ export default function Home() {
       needsReinforcement: caseNeedsReinforcement(c),
     });
     const visibleCases = (cases ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
-    const visibleSheets = (sheets?.items ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
-
-    const merged = new Map<string, CaseItem>();
-
-    for (const item of visibleSheets) {
-      if (item.id) {
-        merged.set(item.id, item);
-      }
-    }
-
-    for (const item of visibleCases) {
-      if (item.id) {
-        merged.set(item.id, item);
-      }
-    }
-
-    return Array.from(merged.values()).map(toMarker);
-  }, [cases, sheets, isStatusVisible, isUrgencyVisible, caseHasEmergency, caseNeedsReinforcement]);
+    return visibleCases.map(toMarker);
+  }, [cases, isStatusVisible, isUrgencyVisible, caseHasEmergency, caseNeedsReinforcement]);
 
   const selectedHasEmergency = caseHasEmergency(selectedCase);
   const selectedNeedsReinforcement = caseNeedsReinforcement(selectedCase);
@@ -301,15 +283,14 @@ export default function Home() {
     const nextClaimed = [...claimed, name];
     try {
       if (selectedCase.id) {
-        const res = await fetch("/api/sheets/update", {
+        const res = await fetch(`/api/cases/${selectedCase.id}/claim`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ caseId: selectedCase.id, claimedBy: nextClaimed }),
+          body: JSON.stringify({ name }),
         });
         if (!res.ok) throw new Error("update-failed");
-        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
+        await queryClient.invalidateQueries({ queryKey: ["cases"] });
       }
-      await queryClient.invalidateQueries({ queryKey: ["cases"] });
       const updated: CaseItem = { ...selectedCase, claimedBy: nextClaimed, updatedAt: Date.now() };
       if (isLocalCase(selectedCase)) {
         caseStore.actions.upsert(updated);
@@ -342,11 +323,10 @@ export default function Home() {
       const uploaded = completionFiles.length ? await uploadFilesAndGetUrls(completionFiles) : [];
       const completedAt = Date.now();
       if (selectedCase.id) {
-        const res = await fetch("/api/sheets/update", {
+        const res = await fetch(`/api/cases/${selectedCase.id}/complete`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            caseId: selectedCase.id,
             status: "completed",
             completionDescription,
             completionImages: uploaded,
@@ -355,9 +335,8 @@ export default function Home() {
           }),
         });
         if (!res.ok) throw new Error("update-failed");
-        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
+        await queryClient.invalidateQueries({ queryKey: ["cases"] });
       }
-      await queryClient.invalidateQueries({ queryKey: ["cases"] });
       const updated: CaseItem = {
         ...selectedCase,
         status: "completed",
@@ -417,11 +396,10 @@ export default function Home() {
       const newStatus: CaseItem["status"] = values.reportType === "completed" ? "completed" : "pending";
       const newUrgency: CaseItem["urgency"] = isEmergency && needsReinforcement ? "both" : isEmergency ? "emergency" : needsReinforcement ? "reinforcement" : "normal";
       if (selectedCase.id) {
-        const res = await fetch("/api/sheets/update", {
+        const res = await fetch(`/api/cases/${selectedCase.id}/update`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            caseId: selectedCase.id,
             description: values.content,
             status: newStatus,
             emergency: isEmergency,
@@ -430,9 +408,8 @@ export default function Home() {
           }),
         });
         if (!res.ok) throw new Error("update-failed");
-        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
+        await queryClient.invalidateQueries({ queryKey: ["cases"] });
       }
-      await queryClient.invalidateQueries({ queryKey: ["cases"] });
       const updated: CaseItem = {
         ...selectedCase,
         description: values.content,
@@ -528,15 +505,21 @@ export default function Home() {
 
       <FiltersBar value={filters} onChange={setFilters} />
       <div className="absolute inset-0 z-0 pt-[42px]">
-        <MapView initialCenter={DEFAULT_CENTER} onMapClick={onMapClick} onMarkerClick={(id) => {
-          const item = (sheets?.items ?? []).concat(cases ?? []).find((x) => x.id === id);
-          if (item) {
-            setPendingCoord({ lat: item.latitude, lng: item.longitude });
-            setMapSelectionActive(false);
-            setSelectedCase(item);
-            showDialog("info");
-          }
-        }} markers={markers} center={centerCommand ?? undefined} />
+        <MapView
+          initialCenter={DEFAULT_CENTER}
+          onMapClick={onMapClick}
+          onMarkerClick={(id) => {
+            const item = (cases ?? []).find((x) => x.id === id);
+            if (item) {
+              setPendingCoord({ lat: item.latitude, lng: item.longitude });
+              setMapSelectionActive(false);
+              setSelectedCase(item);
+              showDialog("info");
+            }
+          }}
+          markers={markers}
+          center={centerCommand ?? undefined}
+        />
         {/* 簡易：未實作標籤點擊後聚焦；後續可加入 Marker cluster 與點擊詳情 */}
       </div>
 

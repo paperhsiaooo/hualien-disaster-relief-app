@@ -21,7 +21,7 @@
 | 資料管理 | @tanstack/react-query | 快速同步遠端狀態、整合本地儲存 |
 | 地圖系統 | react-leaflet, Leaflet | 顯示案件、切換狀態、自訂標記樣式 |
 | 檔案處理 | browser-image-compression, Cloudflare R2 | 前端壓縮 + 預簽 URL 直傳，取得 CDN 公開連結 |
-| 後端整合 | Next.js Route Handlers | `/api/sheets/*` 與 `/api/r2/*` API 處理資料持久化 |
+| 後端整合 | Next.js Route Handlers | `/api/cases/*` (MySQL CRUD) 與 `/api/r2/*` API 處理資料持久化 |
 
 ## ⚙️ 安裝與開發流程
 
@@ -60,6 +60,13 @@ GOOGLE_SHEETS_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KE
 GOOGLE_SHEETS_SPREADSHEET_ID=sheetId
 GOOGLE_SHEETS_SHEET_NAME=Sheet1
 
+# MySQL (案件資料)
+MYSQL_HOST=yourMysqlHost
+MYSQL_PORT=3306
+MYSQL_USER=yourUser
+MYSQL_PASSWORD=yourPassword
+MYSQL_DATABASE=hualien_cases
+
 # 案件預設參數（選用）
 DEFAULT_CASE_EXPIRY_DAYS=7
 ```
@@ -97,14 +104,14 @@ src/
 │   ├── layout.tsx          # 全域 metadata 與 React Query Provider
 │   ├── page.tsx            # 主頁，含地圖、篩選、案件流程
 │   └── api/
-│       ├── sheets/         # Google Sheets append/update/list API routes
+│       ├── cases/          # 案件 CRUD API（MySQL）
 │       └── r2/             # R2 預簽名 URL API routes
 ├── components/
 │   ├── map/                # 地圖元件、浮動按鈕
 │   ├── report/             # 案件表單、上傳區與 UI 顯示
 │   └── ui/                 # shadcn-ui 元件封裝
 ├── hooks/                  # 自訂 hooks（定位、案件 store 等）
-├── lib/                    # 上傳、Hash、store 工具方法
+├── lib/                    # 上傳、hash、db 連線等工具方法
 └── types/                  # TypeScript 型別定義
 ```
 
