@@ -615,17 +615,10 @@ function HomeContent() {
           </DialogHeader>
           <div className="space-y-3">
             <Input placeholder="輸入姓名" value={nameInput} onChange={(e) => setNameInput(e.target.value)} autoFocus />
-            <div className="flex justify-end">
-              <Button onClick={confirmName}>
-                確認
-              </Button>
-            </div>
           </div>
-          <div className="mt-3 flex justify-end">
+          <div className="mt-3 flex justify-end gap-2">
             <Button variant="ghost" onClick={() => showDialog(null)}>關閉</Button>
-          </div>
-          <div className="mt-3 flex justify-end">
-            <Button variant="ghost" onClick={() => showDialog(null)}>關閉</Button>
+            <Button onClick={confirmName}>確認</Button>
           </div>
         </DialogContent>
       </Dialog>
