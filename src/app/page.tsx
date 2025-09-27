@@ -176,7 +176,7 @@ function HomeContent() {
     setPendingCoord({ lat: found.latitude, lng: found.longitude });
     setMapSelectionActive(false);
     setCenterCommand({ lat: found.latitude, lng: found.longitude });
-    setZoomCommand(17); // 放大一點
+    setZoomCommand(18); // 再放大一些，貼近目標
     setSelectedCase(found);
     // 不自動開啟詳情視窗，僅移動與縮放
   }, [searchParams, cases, sheets]);
