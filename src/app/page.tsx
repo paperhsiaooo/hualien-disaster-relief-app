@@ -75,6 +75,7 @@ function HomeContent() {
   const completeOpen = activeDialog === "complete";
   const [pendingCoord, setPendingCoord] = useState<LatLng | null>(null);
   const [centerCommand, setCenterCommand] = useState<LatLng | null>(null);
+  const [zoomCommand, setZoomCommand] = useState<number | null>(null);
   const [pendingUseCurrent, setPendingUseCurrent] = useState(false);
   const [mapSelectionActive, setMapSelectionActive] = useState(false);
   const [selectedCase, setSelectedCase] = useState<CaseItem | null>(null);
@@ -165,20 +166,20 @@ function HomeContent() {
   const { data: sheets } = useSheetsCases();
   const createCase = useCreateCaseMutation(caseStore);
 
-  // 依網址參數開啟案件詳情（在 cases/sheets 宣告之後，避免 TDZ）
+  // 依網址參數定位案件（在 cases/sheets 宣告之後，避免 TDZ）
   useEffect(() => {
     const caseIdParam = searchParams?.get("case");
     if (!caseIdParam) return;
-    if (selectedCase?.id === caseIdParam && activeDialog === "info") return;
     const combined = (sheets?.items ?? []).concat(cases ?? []);
     const found = combined.find((item) => item.id === caseIdParam);
     if (!found) return;
     setPendingCoord({ lat: found.latitude, lng: found.longitude });
     setMapSelectionActive(false);
     setCenterCommand({ lat: found.latitude, lng: found.longitude });
+    setZoomCommand(17); // 放大一點
     setSelectedCase(found);
-    showDialog("info");
-  }, [searchParams, cases, sheets, selectedCase?.id, showDialog, activeDialog]);
+    // 不自動開啟詳情視窗，僅移動與縮放
+  }, [searchParams, cases, sheets]);
 
   const statusSelection = filters.status;
   const showAllStatuses = !statusSelection.pending && !statusSelection.claimed && !statusSelection.completed;
@@ -257,6 +258,36 @@ function HomeContent() {
 
   const selectedHasEmergency = caseHasEmergency(selectedCase);
   const selectedNeedsReinforcement = caseNeedsReinforcement(selectedCase);
+
+  const shareUrl = useMemo(() => {
+    if (!selectedCase?.id) return "";
+    if (typeof window === "undefined") return "";
+    const url = new URL(window.location.href);
+    url.searchParams.set("case", selectedCase.id);
+    return url.toString();
+  }, [selectedCase?.id]);
+
+  const copyCaseLink = useCallback(async () => {
+    const link = shareUrl;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setToast("🔗 已複製案件連結");
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = link;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setToast("🔗 已複製案件連結");
+      } catch {
+        setToast("⚠️ 複製失敗");
+      }
+    }
+    setTimeout(() => setToast(""), 2500);
+  }, [shareUrl]);
 
   const chooseByMap = () => {
     // 關閉視窗，等待使用者在地圖上取點
@@ -551,11 +582,14 @@ function HomeContent() {
   }, [selectedCase, isStatusVisible, isUrgencyVisible, infoOpen, showDialog]);
 
   useEffect(() => {
-    if (centerCommand) {
-      const timer = setTimeout(() => setCenterCommand(null), 0);
+    if (centerCommand || typeof zoomCommand === "number") {
+      const timer = setTimeout(() => {
+        setCenterCommand(null);
+        setZoomCommand(null);
+      }, 0);
       return () => clearTimeout(timer);
     }
-  }, [centerCommand]);
+  }, [centerCommand, zoomCommand]);
 
   return (
     <div className="relative h-[100dvh] w-full">
@@ -618,7 +652,7 @@ function HomeContent() {
             setToast(`⚠️ 讀取案件失敗：${msg}`);
             setTimeout(() => setToast(""), 2500);
           }
-        }} markers={markers} center={centerCommand ?? undefined} />
+        }} markers={markers} center={centerCommand ?? undefined} zoom={typeof zoomCommand === 'number' ? zoomCommand : undefined} />
         {/* 簡易：未實作標籤點擊後聚焦；後續可加入 Marker cluster 與點擊詳情 */}
       </div>
 
@@ -765,6 +799,25 @@ function HomeContent() {
                 <div className="text-xs text-neutral-500">通報者</div>
                 <div className="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
                   {selectedCase.reporterName?.trim() || "未提供姓名"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-neutral-500">分享連結</div>
+                <div className="mt-1 flex items-center gap-2">
+                  <Input value={shareUrl} disabled readOnly className="text-xs" />
+                  <button
+                    type="button"
+                    onClick={copyCaseLink}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 shadow-sm transition hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                    aria-label="複製連結"
+                    title="複製連結"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
+                      <path fill="none" stroke="currentColor" strokeWidth="2" d="M9 9h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" />
+                      <path fill="none" stroke="currentColor" strokeWidth="2" d="M7 7V6a2 2 0 0 1 2-2h7" />
+                      <path fill="none" stroke="currentColor" strokeWidth="2" d="M7 7h7a2 2 0 0 1 2 2v7" />
+                    </svg>
+                  </button>
                 </div>
               </div>
               <div>

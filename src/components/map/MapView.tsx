@@ -40,6 +40,7 @@ type LatLngShape = LatLng extends infer T ? T : never;
 export type MapViewProps = {
   initialCenter?: LatLngShape;
   center?: LatLngShape; // 若提供，會在變更時自動移動地圖中心
+  zoom?: number; // 若提供，center 變更時一併套用縮放
   markers?: MapMarkerShape[];
   onMapClick?: (coord: LatLngShape) => void;
   onMarkerClick?: (id: string) => void;
@@ -55,7 +56,7 @@ export type MapViewProps = {
  * - 點擊地圖可回傳座標
  * - 支援外部傳入 markers 顯示
  */
-export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, center: externalCenter, markers = [], onMapClick, onMarkerClick, selection }: MapViewProps) {
+export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, center: externalCenter, zoom: externalZoom, markers = [], onMapClick, onMarkerClick, selection }: MapViewProps) {
   const iconCache = useRef(new Map<string, L.DivIcon>());
   const [clusterReady, setClusterReady] = useState(false);
 
@@ -138,18 +139,18 @@ export function MapView({ initialCenter = { lat: 23.6539, lng: 121.4231 }, cente
   };
 
   // 由子元件存取 Leaflet map 並在 center 改變時移動
-  const CenterController = ({ center }: { center?: LatLng }) => {
+  const CenterController = ({ center, zoom }: { center?: LatLng; zoom?: number }) => {
     const map = useMap();
     useEffect(() => {
-      if (center) map.setView([center.lat, center.lng]);
-    }, [center, map]);
+      if (center) map.setView([center.lat, center.lng], typeof zoom === "number" ? zoom : map.getZoom());
+    }, [center, zoom, map]);
     return null;
   };
 
   return (
     <MapContainer center={[initialCenter.lat, initialCenter.lng]} zoom={14} style={{ width: "100%", height: "100%" }} zoomControl={false}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-      <CenterController center={externalCenter} />
+      <CenterController center={externalCenter} zoom={externalZoom} />
       <MapEvents />
       {clusterReady ? (
         <MarkerClusterGroup
