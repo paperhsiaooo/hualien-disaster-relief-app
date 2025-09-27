@@ -23,11 +23,14 @@ const STATUS_COLORS: Record<string, string> = {
   default: "#9ca3af",
 };
 
+type MapMarkerShape = MapMarker extends infer T ? T : never;
+type LatLngShape = LatLng extends infer T ? T : never;
+
 export type MapViewProps = {
-  initialCenter?: LatLng;
-  center?: LatLng; // 若提供，會在變更時自動移動地圖中心
-  markers?: MapMarker[];
-  onMapClick?: (coord: LatLng) => void;
+  initialCenter?: LatLngShape;
+  center?: LatLngShape; // 若提供，會在變更時自動移動地圖中心
+  markers?: MapMarkerShape[];
+  onMapClick?: (coord: LatLngShape) => void;
   onMarkerClick?: (id: string) => void;
 };
 

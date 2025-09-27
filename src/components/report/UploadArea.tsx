@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import Image from "next/image";
+import imageCompression, { type Options as ImageCompressionOptions } from "browser-image-compression";
 
 const ACCEPT = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
@@ -39,7 +40,23 @@ export function UploadArea({ value, onChange }: UploadAreaProps) {
     return null;
   };
 
-  const onFiles = (files: FileList | null) => {
+  const compressFiles = async (files: File[]) => {
+    const compressed: File[] = [];
+    const options: ImageCompressionOptions = {
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1600,
+      useWebWorker: true,
+    };
+    for (const file of files) {
+      const blob = await imageCompression(file, options);
+      const ext = file.name.split(".").pop() || "jpg";
+      const name = `${file.name.replace(/\.[^.]+$/, "")}-compressed.${ext}`;
+      compressed.push(new File([blob], name, { type: blob.type }));
+    }
+    return compressed;
+  };
+
+  const onFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const arr = Array.from(files);
     const msg = validate(arr);
@@ -48,7 +65,12 @@ export function UploadArea({ value, onChange }: UploadAreaProps) {
       return;
     }
     setError(null);
-    onChange([...value, ...arr]);
+    try {
+      const compressed = await compressFiles(arr);
+      onChange([...value, ...compressed]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "壓縮失敗，請稍後再試");
+    }
   };
 
   const removeAt = (idx: number) => {

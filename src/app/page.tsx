@@ -63,6 +63,7 @@ export default function Home() {
   const [completionDescription, setCompletionDescription] = useState<string>("");
   const [completionFiles, setCompletionFiles] = useState<File[]>([]);
   const [completionLoading, setCompletionLoading] = useState(false);
+  const [claimLoading, setClaimLoading] = useState(false);
   const [updateInitialValues, setUpdateInitialValues] = useState<ReportCoreValues | null>(null);
   const [updateLoading, setUpdateLoading] = useState(false);
 
@@ -245,11 +246,13 @@ export default function Home() {
 
   const handleClaim = async () => {
     if (!selectedCase) return;
+    setClaimLoading(true);
     const name = (userName || nameInput).trim() || "匿名";
     const claimed = selectedCase.claimedBy ?? [];
     if (claimed.includes(name)) {
       setToast("⚠️ 已經認領過囉");
       setTimeout(() => setToast(""), 2500);
+      setClaimLoading(false);
       return;
     }
     const nextClaimed = [...claimed, name];
@@ -270,10 +273,12 @@ export default function Home() {
       }
       setSelectedCase(updated);
       setToast("✅ 已認領");
+      showDialog(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : null;
       setToast(message ? `⚠️ 認領失敗：${message}` : "⚠️ 認領失敗，請稍後再試");
     } finally {
+      setClaimLoading(false);
       setTimeout(() => setToast(""), 2500);
     }
   };
@@ -705,14 +710,20 @@ export default function Home() {
               )}
               <div className="flex flex-wrap justify-end gap-2">
                 {selectedCase.status !== "completed" && (
-                  <Button variant="outline" onClick={handleClaim}>
-                    我要認領
+                  <Button variant="outline" onClick={handleClaim} disabled={claimLoading}>
+                    {claimLoading ? "認領中…" : "我要認領"}
                   </Button>
                 )}
-                <Button variant="outline" onClick={openUpdateDialog}>
-                  更新狀況
-                </Button>
-                {selectedCase.status !== "completed" && <Button onClick={openCompleteDialog}>標記完成</Button>}
+                {selectedCase.status !== "completed" && (
+                  <Button variant="outline" onClick={openUpdateDialog} disabled={claimLoading}>
+                    更新狀況
+                  </Button>
+                )}
+                {selectedCase.status !== "completed" && (
+                  <Button onClick={openCompleteDialog} disabled={claimLoading}>
+                    標記完成
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
@@ -800,6 +811,7 @@ export default function Home() {
                   setCompletionLoading(false);
                   showDialog(null);
                 }}
+                disabled={completionLoading}
               >
                 取消
               </Button>
