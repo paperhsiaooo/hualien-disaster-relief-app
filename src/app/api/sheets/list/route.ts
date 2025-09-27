@@ -1,125 +1,122 @@
-import { google } from "googleapis";
 import type { CaseItem } from "@/types/case";
+import { query } from "@/lib/db";
+import { NextRequest } from "next/server";
 
-const COLUMN_COUNT = 15;
+type CaseRow = {
+  id: string;
+  reporter_name: string | null;
+  description: string;
+  latitude: number;
+  longitude: number;
+  status: string;
+  is_emergency: 0 | 1;
+  needs_reinforcement: 0 | 1;
+  images: string | null;
+  claimed_by: string | null;
+  completion_description: string | null;
+  completion_images: string | null;
+  completed_by: string | null;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
 
-/**
- * 讀取 Google Sheets 中的案件清單，回傳陣列。
- * 欄位順序與 /api/sheets/append 寫入一致：
- * [createdAtISO, reporterName, description, latitude, longitude, status, urgency, reinforcementFlag, imagesCSV, claimedByCSV, completionDescription, completionImagesCSV, completedBy, completedAtISO, caseId]
- */
-export async function GET() {
+function safeParseArray(input: unknown): string[] {
+  if (!input) return [];
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
+    } catch {
+      return input.split(/\s*[|;,]\s*/).filter(Boolean);
+    }
+  }
+  return Array.isArray(input) ? input.filter((x) => typeof x === "string") : [];
+}
+
+export async function GET(req: NextRequest) {
   try {
-    const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
-    const privateKey = (process.env.GOOGLE_SHEETS_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    const sheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || "Sheet1";
-
-    if (!clientEmail || !privateKey || !spreadsheetId) {
-      return new Response(JSON.stringify({ error: "缺少 Sheets 環境變數" }), { status: 500 });
+    const id = req.nextUrl.searchParams.get("id");
+    if (id) {
+      const rows = await query<CaseRow[]>("SELECT * FROM cases WHERE id = ?", [id]);
+      if (!rows.length) {
+        return new Response(JSON.stringify({ error: "案件不存在" }), { status: 404 });
+      }
+      const row = rows[0];
+      const isEmergency = row.is_emergency === 1;
+      const needsReinforcement = row.needs_reinforcement === 1;
+      const urgency = isEmergency && needsReinforcement ? "both" : isEmergency ? "emergency" : needsReinforcement ? "reinforcement" : "normal";
+      const images = safeParseArray(row.images);
+      const claimedBy = safeParseArray(row.claimed_by);
+      const completionImages = safeParseArray(row.completion_images);
+      const completionDescription = row.completion_description ?? undefined;
+      const item: CaseItem = {
+        id: row.id,
+        description: row.description,
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        status: row.status as CaseItem["status"],
+        urgency,
+        images,
+        reporterName: row.reporter_name ?? undefined,
+        reinforcement: needsReinforcement,
+        claimedBy,
+        completion:
+          completionDescription || completionImages.length || row.completed_by || row.completed_at
+            ? {
+                description: completionDescription,
+                images: completionImages.length ? completionImages : undefined,
+                completedBy: row.completed_by ?? undefined,
+                completedAt: row.completed_at ? row.completed_at.getTime() : undefined,
+              }
+            : undefined,
+        sheetRow: undefined,
+        isEmergency,
+        needsReinforcement,
+        createdAt: row.created_at.getTime(),
+        updatedAt: row.updated_at.getTime(),
+      };
+      return new Response(JSON.stringify({ item }), { status: 200 });
     }
 
-    const auth = new google.auth.JWT({
-      email: clientEmail,
-      key: privateKey,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    const rows = await query<CaseRow[]>("SELECT * FROM cases ORDER BY created_at DESC");
+    const items: CaseItem[] = rows.map((row) => {
+      const isEmergency = row.is_emergency === 1;
+      const needsReinforcement = row.needs_reinforcement === 1;
+      const urgency = isEmergency && needsReinforcement ? "both" : isEmergency ? "emergency" : needsReinforcement ? "reinforcement" : "normal";
+      const images = safeParseArray(row.images);
+      const claimedBy = safeParseArray(row.claimed_by);
+      const completionImages = safeParseArray(row.completion_images);
+      const completionDescription = row.completion_description ?? undefined;
+      const completion =
+        completionDescription || completionImages.length || row.completed_by || row.completed_at
+          ? {
+              description: completionDescription,
+              images: completionImages.length ? completionImages : undefined,
+              completedBy: row.completed_by ?? undefined,
+              completedAt: row.completed_at ? row.completed_at.getTime() : undefined,
+            }
+          : undefined;
+
+      return {
+        id: row.id,
+        description: row.description,
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        status: row.status as CaseItem["status"],
+        urgency,
+        images,
+        reporterName: row.reporter_name ?? undefined,
+        reinforcement: needsReinforcement,
+        claimedBy,
+        completion,
+        sheetRow: undefined,
+        isEmergency,
+        needsReinforcement,
+        createdAt: row.created_at.getTime(),
+        updatedAt: row.updated_at.getTime(),
+      } satisfies CaseItem;
     });
-    const sheets = google.sheets({ version: "v4", auth });
-    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: sheetName });
-
-    const values = res.data.values || [];
-    const items = values
-      .map((row, idx) => {
-        if (row.length < 9) {
-          // 舊版欄位：createdAt, description, latitude, longitude, status, urgency, images
-          const createdAt = Date.parse(row[0] || "") || Date.now();
-          const description = (row[1] || "").toString();
-          const latitude = parseFloat(row[2]);
-          const longitude = parseFloat(row[3]);
-          const status = (row[4] || "").toString();
-          const urgency = (row[5] || "").toString();
-          const imagesCSV = (row[6] || "").toString();
-          const images = imagesCSV ? imagesCSV.split(/\s*,\s*/).filter(Boolean) : [];
-          const isEmergency = urgency === "emergency" || urgency === "both";
-          const needsReinforcement = urgency === "reinforcement" || urgency === "both";
-          const combinedUrgency = isEmergency && needsReinforcement ? "both" : urgency || "normal";
-          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-          return {
-            id: `sheet-${idx}-${createdAt}`,
-            description,
-            latitude,
-            longitude,
-            status,
-            urgency: combinedUrgency,
-            reinforcement: needsReinforcement,
-            images,
-            reporterName: "",
-            claimedBy: [],
-            isEmergency,
-            needsReinforcement,
-            createdAt,
-            updatedAt: createdAt,
-            sheetRow: idx + 1,
-          } as CaseItem;
-        }
-
-        const filled = new Array<string>(COLUMN_COUNT).fill("");
-        for (let i = 0; i < Math.min(COLUMN_COUNT, row.length); i += 1) {
-          filled[i] = row[i] ?? "";
-        }
-
-        const createdAt = Date.parse(filled[0]) || Date.now();
-        const reporterName = filled[1];
-        const description = filled[2];
-        const latitude = parseFloat(filled[3]);
-        const longitude = parseFloat(filled[4]);
-        const status = filled[5];
-        const emergencyFlag = filled[6].toLowerCase() === "true";
-        const reinforcementFlag = filled[7].toLowerCase() === "true";
-        const imagesCSV = filled[8];
-        const claimedByCSV = filled[9];
-        const completionDescription = filled[10];
-        const completionImagesCSV = filled[11];
-        const completedBy = filled[12];
-        const completedAtValue = filled[13] ? Date.parse(filled[13]) : NaN;
-        const caseIdCell = filled[14];
-
-        const images = imagesCSV ? imagesCSV.split(/\s*,\s*/).filter(Boolean) : [];
-        const claimedBy = claimedByCSV ? claimedByCSV.split(/\s*;\s*/).filter(Boolean) : [];
-        const completionImages = completionImagesCSV ? completionImagesCSV.split(/\s*,\s*/).filter(Boolean) : [];
-
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-
-        const combinedUrgency = emergencyFlag && reinforcementFlag ? "both" : emergencyFlag ? "emergency" : reinforcementFlag ? "reinforcement" : "normal";
-
-        return {
-          id: caseIdCell || `sheet-${idx}-${createdAt}`,
-          description,
-          latitude,
-          longitude,
-          status,
-          urgency: combinedUrgency,
-          reinforcement: reinforcementFlag,
-          images,
-          reporterName,
-          claimedBy,
-          completion:
-            completionDescription || completionImages.length || completedBy || Number.isFinite(completedAtValue)
-              ? {
-                  description: completionDescription || undefined,
-                  images: completionImages.length ? completionImages : undefined,
-                  completedBy: completedBy || undefined,
-                  completedAt: Number.isFinite(completedAtValue) ? completedAtValue : undefined,
-                }
-              : undefined,
-          sheetRow: idx + 1,
-          isEmergency: emergencyFlag,
-          needsReinforcement: reinforcementFlag,
-          createdAt,
-          updatedAt: createdAt,
-        } as CaseItem;
-      })
-      .filter(Boolean);
 
     return new Response(JSON.stringify({ items }), { status: 200 });
   } catch (err) {

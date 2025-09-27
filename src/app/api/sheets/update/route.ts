@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest } from "next/server";
 import { google } from "googleapis";
+import { query } from "@/lib/db";
 
 type UpdatePayload = {
   caseId: string;
@@ -71,7 +73,65 @@ export async function POST(req: NextRequest) {
     }
 
     if (!targetRow || targetRowIndex === -1) {
-      return new Response(JSON.stringify({ error: "找不到對應案件" }), { status: 404 });
+      // Sheets 找不到，嘗試改走 DB 更新（相容 DB-only 案件）
+      const rows = await query<any[]>("SELECT * FROM cases WHERE id = ?", [caseId]);
+      if (!rows.length) {
+        return new Response(JSON.stringify({ error: "找不到對應案件" }), { status: 404 });
+      }
+
+      const updates: string[] = [];
+      const params: any[] = [];
+      if (Array.isArray(claimedBy)) {
+        updates.push("claimed_by = ?");
+        params.push(JSON.stringify(claimedBy));
+      }
+      if (status !== undefined) {
+        updates.push("status = ?");
+        params.push(status);
+        if (status === "completed") {
+          updates.push("is_emergency = 0");
+          updates.push("needs_reinforcement = 0");
+        }
+      }
+      if (typeof emergency === "boolean") {
+        updates.push("is_emergency = ?");
+        params.push(emergency ? 1 : 0);
+      }
+      if (typeof reinforcement === "boolean") {
+        updates.push("needs_reinforcement = ?");
+        params.push(reinforcement ? 1 : 0);
+      }
+      if (description !== undefined) {
+        updates.push("description = ?");
+        params.push(description);
+      }
+      if (Array.isArray(images)) {
+        updates.push("images = ?");
+        params.push(JSON.stringify(images));
+      }
+      if (completionDescription !== undefined) {
+        updates.push("completion_description = ?");
+        params.push(completionDescription);
+      }
+      if (Array.isArray(completionImages)) {
+        updates.push("completion_images = ?");
+        params.push(JSON.stringify(completionImages));
+      }
+      if (completedBy !== undefined) {
+        updates.push("completed_by = ?");
+        params.push(completedBy);
+      }
+      if (completedAt !== undefined) {
+        updates.push("completed_at = ?");
+        params.push(completedAt ? new Date(completedAt) : null);
+      }
+      updates.push("updated_at = CURRENT_TIMESTAMP(3)");
+
+      const sql = `UPDATE cases SET ${updates.join(", ")} WHERE id = ?`;
+      params.push(caseId);
+      await query(sql, params);
+
+      return new Response(JSON.stringify({ ok: true, source: "db" }), { status: 200 });
     }
 
     const fullRow = new Array<string>(COLUMN_COUNT).fill("");

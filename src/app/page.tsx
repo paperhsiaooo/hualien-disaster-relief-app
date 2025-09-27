@@ -203,21 +203,13 @@ export default function Home() {
     });
     const visibleCases = (cases ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
     const visibleSheets = (sheets?.items ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
-
     const merged = new Map<string, CaseItem>();
-
     for (const item of visibleSheets) {
-      if (item.id) {
-        merged.set(item.id, item);
-      }
+      if (item.id) merged.set(item.id, item);
     }
-
     for (const item of visibleCases) {
-      if (item.id) {
-        merged.set(item.id, item);
-      }
+      if (item.id) merged.set(item.id, item);
     }
-
     return Array.from(merged.values()).map(toMarker);
   }, [cases, sheets, isStatusVisible, isUrgencyVisible, caseHasEmergency, caseNeedsReinforcement]);
 
@@ -307,7 +299,7 @@ export default function Home() {
           body: JSON.stringify({ caseId: selectedCase.id, claimedBy: nextClaimed }),
         });
         if (!res.ok) throw new Error("update-failed");
-        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
+        // sheets 查詢已移除
       }
       await queryClient.invalidateQueries({ queryKey: ["cases"] });
       const updated: CaseItem = { ...selectedCase, claimedBy: nextClaimed, updatedAt: Date.now() };
@@ -355,7 +347,7 @@ export default function Home() {
           }),
         });
         if (!res.ok) throw new Error("update-failed");
-        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
+        // sheets 查詢已移除
       }
       await queryClient.invalidateQueries({ queryKey: ["cases"] });
       const updated: CaseItem = {
@@ -430,7 +422,7 @@ export default function Home() {
           }),
         });
         if (!res.ok) throw new Error("update-failed");
-        await queryClient.invalidateQueries({ queryKey: ["sheets", "cases"] });
+        // sheets 查詢已移除
       }
       await queryClient.invalidateQueries({ queryKey: ["cases"] });
       const updated: CaseItem = {
@@ -528,13 +520,25 @@ export default function Home() {
 
       <FiltersBar value={filters} onChange={setFilters} />
       <div className="absolute inset-0 z-0 pt-[42px]">
-        <MapView initialCenter={DEFAULT_CENTER} onMapClick={onMapClick} onMarkerClick={(id) => {
-          const item = (sheets?.items ?? []).concat(cases ?? []).find((x) => x.id === id);
-          if (item) {
-            setPendingCoord({ lat: item.latitude, lng: item.longitude });
-            setMapSelectionActive(false);
-            setSelectedCase(item);
-            showDialog("info");
+        <MapView initialCenter={DEFAULT_CENTER} onMapClick={onMapClick} onMarkerClick={async (id) => {
+          try {
+            const res = await fetch(`/api/sheets/list?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+            if (!res.ok) throw new Error(`查詢案件失敗 (${res.status})`);
+            const data = await res.json();
+            const item = (data?.item as CaseItem) ?? (sheets?.items ?? []).concat(cases ?? []).find((x) => x.id === id);
+            if (item) {
+              setPendingCoord({ lat: item.latitude, lng: item.longitude });
+              setMapSelectionActive(false);
+              setSelectedCase(item);
+              showDialog("info");
+            } else {
+              setToast("⚠️ 找不到該案件");
+              setTimeout(() => setToast(""), 2500);
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : "未知錯誤";
+            setToast(`⚠️ 讀取案件失敗：${msg}`);
+            setTimeout(() => setToast(""), 2500);
           }
         }} markers={markers} center={centerCommand ?? undefined} />
         {/* 簡易：未實作標籤點擊後聚焦；後續可加入 Marker cluster 與點擊詳情 */}
@@ -871,8 +875,10 @@ export default function Home() {
 
       {/* 簡易提示 */}
       {toast && (
-        <div className="fixed top-6 right-6 z-[60] flex items-center gap-2 rounded-lg bg-neutral-900/95 px-4 py-3 text-sm font-medium text-white shadow-lg dark:bg-neutral-200/95 dark:text-neutral-900" role="status" aria-live="polite">
+        <div className="fixed top-0 left-0 right-0 z-[4000] flex justify-center p-3" role="status" aria-live="polite">
+          <div className="inline-flex items-center gap-2 rounded-md bg-neutral-900/95 px-4 py-2 text-sm font-medium text-white shadow-lg dark:bg-neutral-200/95 dark:text-neutral-900">
           {toast}
+          </div>
         </div>
       )}
     </div>

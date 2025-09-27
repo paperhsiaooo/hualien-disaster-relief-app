@@ -15,7 +15,10 @@ import type { CaseReportType } from "@/types/case";
 
 const formSchema = z.object({
   reportType: z.enum(["pending", "completed"]),
-  content: z.string().min(1, "請輸入內容"),
+  content: z
+    .string()
+    .min(1, "請輸入內容")
+    .max(150, "最多 150 字"),
   emergency: z.boolean(),
   reinforcement: z.boolean(),
 });
