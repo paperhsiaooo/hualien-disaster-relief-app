@@ -18,15 +18,10 @@ export type UploadAreaProps = {
  */
 export function UploadArea({ value, onChange }: UploadAreaProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
   const openPicker = useCallback(() => {
     inputRef.current?.click();
-  }, []);
-
-  const openCamera = useCallback(() => {
-    cameraRef.current?.click();
   }, []);
 
   const validate = (files: File[]) => {
@@ -84,13 +79,6 @@ export function UploadArea({ value, onChange }: UploadAreaProps) {
       <div className="flex items-center gap-3">
         <button
           type="button"
-          onClick={openCamera}
-          className="h-10 px-4 rounded-md bg-neutral-900 text-white text-sm dark:bg-neutral-100 dark:text-neutral-900"
-        >
-          拍照
-        </button>
-        <button
-          type="button"
           onClick={openPicker}
           className="h-10 px-4 rounded-md border border-neutral-300 text-sm dark:border-neutral-700"
         >
@@ -106,30 +94,22 @@ export function UploadArea({ value, onChange }: UploadAreaProps) {
         className="hidden"
         onChange={(e) => onFiles(e.target.files)}
       />
-      {/* 單獨的相機 input，避免部分平台忽略 capture 屬性 */}
-      <input
-        ref={cameraRef}
-        type="file"
-        accept={ACCEPT.join(",")}
-        multiple={false}
-        className="hidden"
-        onChange={(e) => onFiles(e.target.files)}
-        capture="environment"
-      />
       {error && <div className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</div>}
       {value.length > 0 && (
         <div className="mt-3 grid grid-cols-3 gap-2">
           {value.map((f, idx) => {
             const url = URL.createObjectURL(f);
             return (
-              <div key={idx} className="relative group">
+              <div key={idx} className="relative">
                 <div className="relative h-24 w-full overflow-hidden rounded">
                   <Image src={url} alt={f.name} fill className="object-cover" sizes="96px" />
                 </div>
                 <button
                   type="button"
                   onClick={() => removeAt(idx)}
-                  className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/70 text-white text-xs opacity-0 group-hover:opacity-100"
+                  className="absolute top-1 right-1 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-red-600 p-1 text-xs text-white shadow transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                  aria-label="刪除照片"
+                  title="刪除此張照片"
                 >
                   ×
                 </button>

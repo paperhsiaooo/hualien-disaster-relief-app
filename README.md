@@ -1,64 +1,130 @@
-此專案為行動優先的地圖資源整合頁面，實作需求包含：Google Maps、右下角浮動 + 按鈕、三段彈窗（選點方式 → 座標確認 → 案件回報）、頂部篩選列、前端檔案限制與直傳介面。
+# 花蓮災情即時通報平台
 
-## Getting Started
+花蓮災情即時通報平台是一個開源專案，目標是協助志工、地方救援單位與一般民眾，在災害發生時快速回報現場狀況、掌握救援進度並統整資源。系統提供地圖標記、案件追蹤、直傳照片與即時協作功能，讓災害資訊能夠透明且可驗證地流通。
 
-準備環境變數：
+## ✨ 特色亮點
 
-1) 建立 `.env.local`：
+- **即時地圖標記**：使用 Leaflet 自訂標記顏色與徽章，即時顯示案件狀態（待處理、已認領、已完成）與緊急程度。
+- **多階段案件流程**：從案件回報、狀態更新到完成標記，皆支援補充描述與上傳現場照片。
+- **志工協作機制**：使用者可認領案件、同步更新進度；前端使用 React Query 與本地快取即時反映狀態。
+- **雲端照片直傳**：透過預先簽名 URL 直接上傳至 Cloudflare R2，搭配瀏覽器端圖片壓縮，大幅降低檔案大小。
+- **Google Sheets 整合**：可選擇把案件紀錄寫入試算表，方便後端團隊或地方單位進行二次整理與備份。
+- **行動優先介面**：採用 Next.js App Router、Tailwind CSS v4 與 shadcn-ui，針對手機操作優化。
 
+## 🧱 架構總覽
+
+| 區塊 | 技術 | 功能說明 |
+| --- | --- | --- |
+| 前端框架 | Next.js 15 (App Router) | 混合 CSR/SSR，支援動態載入地圖元件 |
+| UI / UX | Tailwind CSS v4, shadcn-ui, Framer Motion | 建立一致的 UI 與互動動畫 |
+| 表單驗證 | React Hook Form, Zod | 案件回報、更新與完成表單驗證 |
+| 資料管理 | @tanstack/react-query | 快速同步遠端狀態、整合本地儲存 |
+| 地圖系統 | react-leaflet, Leaflet | 顯示案件、切換狀態、自訂標記樣式 |
+| 檔案處理 | browser-image-compression, Cloudflare R2 | 前端壓縮 + 預簽 URL 直傳，取得 CDN 公開連結 |
+| 後端整合 | Next.js Route Handlers | `/api/sheets/*` 與 `/api/r2/*` API 處理資料持久化 |
+
+## ⚙️ 安裝與開發流程
+
+### 1. 取得原始碼
+
+```bash
+git clone https://github.com/<your-org>/hualien-disaster-relief-app.git
+cd hualien-disaster-relief-app
 ```
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=你的GoogleMapsAPIKey
+
+### 2. 安裝相依套件
+
+```bash
+yarn install
 ```
 
-2) 啟動開發伺服器：
+### 3. 設定環境變數
+
+建立 `.env.local`，根據需求填入下列設定：
+
+```bash
+# 地圖/定位來源
+NEXT_PUBLIC_MAPBOX_TOKEN=yourMapToken
+NEXT_PUBLIC_GEOLOCATION_FALLBACK=23.6539,121.4231
+
+# Cloudflare R2 物件儲存（圖片直傳）
+R2_ACCOUNT_ID=yourAccountId
+R2_ACCESS_KEY_ID=yourAccessKey
+R2_SECRET_ACCESS_KEY=yourSecretKey
+R2_BUCKET=yourBucketName
+R2_PUBLIC_BASE=https://hualien-disaster-relief-app.cdn.liwei-cup.com
+
+# Google Sheets（選用）
+GOOGLE_SHEETS_CLIENT_EMAIL=bot@project.iam.gserviceaccount.com
+GOOGLE_SHEETS_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GOOGLE_SHEETS_SPREADSHEET_ID=sheetId
+GOOGLE_SHEETS_SHEET_NAME=Sheet1
+
+# 案件預設參數（選用）
+DEFAULT_CASE_EXPIRY_DAYS=7
+```
+
+> 📌 若啟用 Google Sheets，請先在該試算表共享清單中授權服務帳戶 email。
+
+### 4. 啟動開發伺服器
 
 ```bash
 yarn dev
 ```
 
-打開 `http://localhost:3000` 查看。
+開啟 <http://localhost:3000> 進行開發。
 
-主要頁面：`src/app/page.tsx`。
+## 🧪 測試與 Lint
 
-技術棧：Next.js 15、Tailwind v4、Radix UI、React Hook Form + Zod、@tanstack/react-query、Framer Motion、@vis.gl/react-google-maps。
-
-上傳策略：前端限制檔案型別（jpg/jpeg/png/webp/avif）、大小（≤5MB/檔）、數量（最多3）；實際上傳請以預先簽名 URL 直傳物件儲存（如 Cloudflare R2/S3/Cloudinary）。
-
-Google Sheets 後送（可選）：
-
-```
-GOOGLE_SHEETS_CLIENT_EMAIL=...@....gserviceaccount.com
-GOOGLE_SHEETS_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n
-GOOGLE_SHEETS_SPREADSHEET_ID=你的sheetId
-# 可選，預設 Sheet1
-GOOGLE_SHEETS_SHEET_NAME=Sheet1
+```bash
+yarn lint
+# 若有測試設定，可再執行
+# yarn test
 ```
 
-注意：請在 Google 試算表中把服務帳戶 email 加入共享（可編輯）。
+## 🚀 部署建議
 
-R2 物件儲存（上傳直傳）：
+1. Vercel、Netlify 或任何支援 Node.js 的平台皆可部署。
+2. 將 `.env.local` 內容移至平台的環境變數管理。
+3. Cloudflare R2、Google Sheets 與任何外部服務請採用最小權限原則。
+4. 建議為圖片 CDN 設定快取，提升前端載入效率。
 
+## 📁 目錄結構
+
+```text
+src/
+├── app/
+│   ├── layout.tsx          # 全域 metadata 與 React Query Provider
+│   ├── page.tsx            # 主頁，含地圖、篩選、案件流程
+│   └── api/
+│       ├── sheets/         # Google Sheets append/update/list API routes
+│       └── r2/             # R2 預簽名 URL API routes
+├── components/
+│   ├── map/                # 地圖元件、浮動按鈕
+│   ├── report/             # 案件表單、上傳區與 UI 顯示
+│   └── ui/                 # shadcn-ui 元件封裝
+├── hooks/                  # 自訂 hooks（定位、案件 store 等）
+├── lib/                    # 上傳、Hash、store 工具方法
+└── types/                  # TypeScript 型別定義
 ```
-R2_ACCOUNT_ID=你的 Cloudflare 帳號 ID
-R2_ACCESS_KEY_ID=你的 R2 存取金鑰識別碼
-R2_SECRET_ACCESS_KEY=你的 R2 秘密金鑰
-R2_BUCKET=你的 R2 bucket 名稱
-R2_PUBLIC_BASE=你的公開讀取 URL 前綴（例如 https://r2.cdn.example.com）
-```
 
-流程：前端計算檔案雜湊 → 取得預簽名 URL → 以 PUT 直傳到 R2 → 取回公開 URL → 與案件 metadata 一起寫入 Google Sheet。
+## 🤝 貢獻指南
 
-## Learn More
+1. Fork 本專案並建立新分支：`git checkout -b feature/my-feature`
+2. 撰寫並提交 commits（請附上清楚的摘要）
+3. 若牽涉核心流程，建議同步新增或更新測試案例
+4. 建立 Pull Request，說明變更內容、測試方式與可能的影響
 
-To learn more about Next.js, take a look at the following resources:
+### Issue 回報
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- 使用 GitHub Issues 與 Template 回報 bug 或提需求。
+- 請提供重現步驟、截圖或錯誤日誌，以及使用的瀏覽器／裝置資訊。
+- 歡迎提供 UX、資料結構或救援流程方面的改善建議。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📄 授權條款
 
-## Deploy on Vercel
+本專案以 [MIT License](LICENSE) 授權。你可以自由使用、修改與散布，但請保留原始授權聲明。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+若你正在災區或協助救援，請優先確保自身安全，並於情況允許時使用此平台回報資訊。感謝所有協助花蓮的志工與夥伴，讓救援資訊能更即時、更透明。 

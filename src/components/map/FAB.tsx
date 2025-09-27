@@ -18,7 +18,7 @@ export function FAB({ onClick, asChild, children }: FABProps) {
   if (asChild) return <Container>{children}</Container>;
   return (
     <Container>
-      <Button size="icon" className="rounded-full shadow-lg" onClick={onClick} aria-label="新增">
+      <Button size="icon" className="h-12 w-12 rounded-full bg-blue-400 text-3xl text-white shadow-lg hover:bg-blue-500" onClick={onClick} aria-label="新增">
         +
       </Button>
     </Container>

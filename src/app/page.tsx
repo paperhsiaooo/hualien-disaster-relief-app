@@ -21,6 +21,9 @@ import { useCasesQuery, useCreateCaseMutation } from "@/hooks/useCases";
 import { useSheetsCases } from "@/hooks/useSheets";
 import { uploadFilesAndGetUrls } from "@/lib/uploads";
 
+const CDN_BASE_URL = "https://hualien-disaster-relief-app.cdn.liwei-cup.com";
+const CDN_URL = new URL(CDN_BASE_URL);
+
 const MapView = dynamic<MapViewProps>(() => import("@/components/map/MapView").then((mod) => mod.MapView), { ssr: false });
 
 const formatDate = (value?: number) => {
@@ -96,9 +99,36 @@ export default function Home() {
 
   const resolveImageSrc = useCallback((url: string) => {
     if (!url) return url;
-    if (url.startsWith("http://") || url.startsWith("https://")) return url;
-    const trimmed = url.replace(/^\/+/, "");
-    return `https://${trimmed}`;
+    const trimmed = url.trim();
+
+    // 已含協定，直接回傳經過 URL 正規化的結果
+    if (/^https?:\/\//i.test(trimmed)) {
+      try {
+        return new URL(trimmed).toString();
+      } catch {
+        return trimmed;
+      }
+    }
+
+    // 協定省略成 //cdn/... 的格式
+    if (trimmed.startsWith("//")) {
+      return `${CDN_URL.protocol}${trimmed}`;
+    }
+
+    // 若字串是既有 CDN host（沒有協定），補上協定即可
+    const cdnHost = CDN_URL.host;
+    if (trimmed.startsWith(cdnHost)) {
+      return `${CDN_URL.protocol}//${trimmed.replace(/^\/+/, "")}`;
+    }
+
+    // 本地位址一律強轉至 CDN
+    if (/^(localhost|127\.0\.0\.1|::1)(:?\d+)?\//.test(trimmed)) {
+      const normalized = trimmed.replace(/^[^/]+\//, "");
+      return `${CDN_BASE_URL}/${normalized.replace(/^\/+/, "")}`;
+    }
+
+    // 其他情況視為相對路徑或缺少前導斜線
+    return `${CDN_BASE_URL}/${trimmed.replace(/^\/+/, "")}`;
   }, []);
 
   const { coord: currentCoord, error: locError, get: getCurrent } = useCurrentLocation();
@@ -173,9 +203,22 @@ export default function Home() {
     });
     const visibleCases = (cases ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
     const visibleSheets = (sheets?.items ?? []).filter((c) => isStatusVisible(c.status) && isUrgencyVisible(c));
-    const a = visibleCases.map(toMarker);
-    const b = visibleSheets.map(toMarker);
-    return [...b, ...a];
+
+    const merged = new Map<string, CaseItem>();
+
+    for (const item of visibleSheets) {
+      if (item.id) {
+        merged.set(item.id, item);
+      }
+    }
+
+    for (const item of visibleCases) {
+      if (item.id) {
+        merged.set(item.id, item);
+      }
+    }
+
+    return Array.from(merged.values()).map(toMarker);
   }, [cases, sheets, isStatusVisible, isUrgencyVisible, caseHasEmergency, caseNeedsReinforcement]);
 
   const selectedHasEmergency = caseHasEmergency(selectedCase);
@@ -366,8 +409,9 @@ export default function Home() {
     if (!selectedCase) return;
     setUpdateLoading(true);
     try {
+      const retained = values.retainedExistingImages ?? selectedCase.images ?? [];
       const uploaded = values.files.length ? await uploadFilesAndGetUrls(values.files) : [];
-      const newImages = uploaded.length ? [...(selectedCase.images ?? []), ...uploaded] : selectedCase.images ?? [];
+      const newImages = uploaded.length ? [...retained, ...uploaded] : retained;
       const isEmergency = values.emergency;
       const needsReinforcement = values.reinforcement;
       const newStatus: CaseItem["status"] = values.reportType === "completed" ? "completed" : "pending";
@@ -602,6 +646,7 @@ export default function Home() {
               longitude={pendingCoord.lng}
               onSubmitReport={submitReport}
               onCancel={() => showDialog(null)}
+            resolveImageSrc={resolveImageSrc}
             />
           )}
         </DialogContent>
@@ -760,6 +805,7 @@ export default function Home() {
               submitLabel={updateLoading ? "更新中…" : "更新"}
               loading={updateLoading}
               existingImages={selectedCase.images}
+              resolveImageSrc={resolveImageSrc}
             />
           )}
         </DialogContent>
